@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLO 학습 결과 비교기</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #f8f9fa; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; }
+        .controls { display: flex; gap: 15px; margin-bottom: 20px; justify-content: center; align-items: center; flex-wrap: wrap; }
+        input[type="file"] { padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        select { padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
+        .chart-container { position: relative; height: 60vh; width: 100%; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>YOLO 학습 결과 통합 비교</h1>
+    
+    <div class="controls">
+        <input type="file" id="csvFileInput" accept=".csv" multiple>
+        
+        <select id="metricSelector">
+            <option value="metrics/mAP50-95(B)">mAP50-95 (B)</option>
+            <option value="metrics/mAP50(B)">mAP50 (B)</option>
+            <option value="metrics/precision(B)">Precision</option>
+            <option value="metrics/recall(B)">Recall</option>
+            <option value="val/box_loss">Val Box Loss</option>
+            <option value="val/cls_loss">Val Cls Loss</option>
+            <option value="train/box_loss">Train Box Loss</option>
+            <option value="train/cls_loss">Train Cls Loss</option>
+        </select>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="myChart"></canvas>
+    </div>
+</div>
+
+<script>
+    let myChart = null;
+    let parsedDataList = []; // 각 파일의 데이터를 저장할 배열
+
+    const fileInput = document.getElementById('csvFileInput');
+    const metricSelector = document.getElementById('metricSelector');
+    const ctx = document.getElementById('myChart').getContext('2d');
+
+    // 파일이 업로드되면 실행
+    fileInput.addEventListener('change', async (event) => {
+        const files = event.target.files;
+        if (files.length === 0) return;
+
+        parsedDataList = []; // 초기화
+
+        // 선택된 모든 파일을 읽음
+        for (let file of files) {
+            const text = await readFileAsync(file);
+            const data = parseYoloCSV(text);
+            parsedDataList.push({ name: file.name.replace('.csv', ''), data: data });
+        }
+
+        updateChart();
+    });
+
+    // 지표(mAP, Loss 등)를 변경하면 실행
+    metricSelector.addEventListener('change', () => {
+        updateChart();
+    });
+
+    // 파일 읽기 (Promise)
+    function readFileAsync(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsText(file);
+        });
+    }
+
+    // YOLO CSV 파싱 함수
+    function parseYoloCSV(csvText) {
+        const lines = csvText.trim().split('\n');
+        // 첫 줄은 헤더 (공백 제거 중요)
+        const headers = lines[0].split(',').map(h => h.trim());
+        
+        let result = {};
+        headers.forEach(h => result[h] = []);
+
+        // 데이터 파싱
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            const values = lines[i].split(',').map(v => parseFloat(v.trim()));
+            headers.forEach((h, index) => {
+                if (!isNaN(values[index])) {
+                    result[h].push(values[index]);
+                }
+            });
+        }
+        return result;
+    }
+
+    // 그래프 업데이트 함수
+    function updateChart() {
+        if (parsedDataList.length === 0) return;
+
+        const selectedMetric = metricSelector.value;
+        const datasets = [];
+
+        // 색상 팔레트
+        const colors = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
+
+        let maxEpochs = 0;
+
+        parsedDataList.forEach((item, index) => {
+            // 선택한 지표의 데이터가 있는지 확인 (YOLO 버전에 따라 이름이 미세하게 다를 수 있음)
+            const metricKey = Object.keys(item.data).find(k => k.includes(selectedMetric.split('/')[1])); 
+            
+            if (metricKey && item.data[metricKey]) {
+                const dataPoints = item.data[metricKey];
+                maxEpochs = Math.max(maxEpochs, dataPoints.length);
+                
+                datasets.push({
+                    label: item.name,
+                    data: dataPoints,
+                    borderColor: colors[index % colors.length],
+                    backgroundColor: colors[index % colors.length],
+                    borderWidth: 2,
+                    pointRadius: 1, // 점 크기 최소화
+                    tension: 0.3, // 선을 약간 부드럽게
+                    fill: false
+                });
+            }
+        });
+
+        const labels = Array.from({length: maxEpochs}, (_, i) => i + 1);
+
+        // 기존 차트가 있으면 파괴 후 다시 그림
+        if (myChart) {
+            myChart.destroy();
+        }
+
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: `${selectedMetric} 비교` }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Epochs' } },
+                    y: { title: { display: true, text: 'Value' } }
+                }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>
