@@ -1,0 +1,48 @@
+{
+    "timestamp": "2026-03-07T07:46:06.366645",
+    "target_object": "/Users/songyeongman/2Dto3D/2Dto3D_with_m0609/3d_scanning/point_cloud4.ply",
+    "grasp_points": [
+        {
+            "score": 100.0,
+            "position": {
+                "x": 0.4553,
+                "y": 1.0885,
+                "z": 0.0933
+            },
+            "approach_vector": {
+                "nx": -0.2888,
+                "ny": -0.6129,
+                "nz": 0.7355
+            },
+            "rank": 1
+        },
+        {
+            "score": 100.0,
+            "position": {
+                "x": 0.0833,
+                "y": 0.1027,
+                "z": -0.3167
+            },
+            "approach_vector": {
+                "nx": 0.7273,
+                "ny": 0.4213,
+                "nz": -0.5417
+            },
+            "rank": 2
+        },
+        {
+            "score": 100.0,
+            "position": {
+                "x": 0.27,
+                "y": 0.8035,
+                "z": -0.3366
+            },
+            "approach_vector": {
+                "nx": 0.2749,
+                "ny": -0.4096,
+                "nz": -0.8699
+            },
+            "rank": 3
+        }
+    ]
+}
