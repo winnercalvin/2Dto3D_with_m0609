@@ -53,3 +53,29 @@ class CameraManager:
         base2cam = base2gripper @ self.gripper2cam
         td_coord = np.dot(base2cam, coord)
         return td_coord[:3]
+    
+    def get_3dgs_transform_matrix(self, current_robot_posx):
+        """
+        현재 로봇 좌표를 받아서 3DGS JSON에 들어갈 완벽한 OpenGL 기준 C2W 행렬을 반환합니다.
+        """
+        x, y, z, rx, ry, rz = current_robot_posx
+        
+        # 🚨 중요 1: 단위 변환 (밀리미터 -> 미터)
+        # 만약 이미 미터(m) 단위로 받고 계시다면 이 부분을 지워주세요!
+        x_m = x / 1000.0
+        y_m = y / 1000.0
+        z_m = z / 1000.0
+        
+        # 1. 그리퍼의 월드 좌표 구하기 (미터 단위 적용)
+        base2gripper = self.get_robot_pose_matrix(x_m, y_m, z_m, rx, ry, rz)
+        
+        # 🚨 핸드아이 매트릭스 단위 체크!
+        # self.gripper2cam 안의 평행이동(Translation) 값도 반드시 '미터(m)' 단위여야 합니다.
+        base2cam = base2gripper @ self.gripper2cam  # OpenCV 기준 완벽한 C2W 행렬
+        
+        # 🚨 중요 2: 3DGS용 OpenGL 좌표계 변환 (Y, Z축 뒤집기)
+        c2w_opengl = base2cam.copy()
+        c2w_opengl[:, 1] *= -1  # Y축 반전
+        c2w_opengl[:, 2] *= -1  # Z축 반전
+        
+        return c2w_opengl.tolist()  # JSON에 바로 넣을 수 있게 리스트로 반환
