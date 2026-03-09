@@ -200,13 +200,24 @@ const main = async () => {
     }
 
     // =========================================================
-    // 🚀 [커스텀 로직] M0609 파지점 자동 로드 및 시각화
+    // 🚀 [커스텀 로직] 전송 후 파란색 다각형만 지우고 초록색 점은 유지!
     // =========================================================
     setTimeout(async () => {
         try {
-            console.log("🛠️ 파지점 시각화 세팅 시작...");
+            console.log("🛠️ 초고속 클릭 다각형 영역 선택 UI 세팅 시작...");
 
-            // 1. 마커 컨테이너 생성
+            // --- 1. 다각형 그리기 캔버스 ---
+            const polyCanvas = document.createElement('canvas');
+            polyCanvas.style.position = 'absolute';
+            polyCanvas.style.top = '0';
+            polyCanvas.style.left = '0';
+            polyCanvas.style.width = '100%'; 
+            polyCanvas.style.height = '100%';
+            polyCanvas.style.pointerEvents = 'none';
+            polyCanvas.style.zIndex = '1002';
+            editorUI.canvasContainer.dom.appendChild(polyCanvas);
+            const polyCtx = polyCanvas.getContext('2d');
+
             const markersContainer = document.createElement('div');
             markersContainer.style.position = 'absolute';
             markersContainer.style.top = '0';
@@ -217,154 +228,462 @@ const main = async () => {
             markersContainer.style.zIndex = '1000';
             editorUI.canvasContainer.dom.appendChild(markersContainer);
 
-            // 2. 토글 버튼 생성
-            const toggleBtn = document.createElement("button");
-            toggleBtn.innerText = "👀 파지점 끄기";
-            toggleBtn.style.position = "absolute";
-            toggleBtn.style.bottom = "80px";
-            toggleBtn.style.left = "10%";
-            toggleBtn.style.transform = "translateX(-50%)";
-            toggleBtn.style.padding = "10px 20px";
-            toggleBtn.style.fontSize = "16px";
-            toggleBtn.style.fontWeight = "bold";
-            toggleBtn.style.backgroundColor = "#ff5722";
-            toggleBtn.style.color = "white";
-            toggleBtn.style.border = "none";
-            toggleBtn.style.borderRadius = "8px";
-            toggleBtn.style.cursor = "pointer";
-            toggleBtn.style.zIndex = "1001";
-            toggleBtn.style.pointerEvents = "auto";
-
-            let isVisible = true;
-
-            toggleBtn.addEventListener("pointerdown", (e) => {
-                e.stopPropagation(); // 부모 요소(캔버스 등)로 이벤트가 퍼지는 것을 막음
+            // --- 2. 네이티브 UI 패널 ---
+            const panel = document.createElement('div');
+            panel.style.position = 'absolute';
+            panel.style.top = '15px';
+            panel.style.right = '85px';
+            panel.style.width = '280px';
+            panel.style.backgroundColor = '#2c2c2c';
+            panel.style.color = '#eeeeee';
+            panel.style.padding = '15px';
+            panel.style.borderRadius = '8px';
+            panel.style.fontFamily = 'sans-serif';
+            panel.style.boxShadow = '0 4px 15px rgba(0,0,0,0.5)';
+            panel.style.zIndex = '2000';
+            panel.style.pointerEvents = 'auto';
+            panel.innerHTML = `
+                <h3 style="margin: 0 0 15px 0; font-size: 16px; border-bottom: 1px solid #444; padding-bottom: 8px;">📦 MoveIt 다각형 영역 선택</h3>
                 
-                isVisible = !isVisible;
-                markersContainer.style.display = isVisible ? "block" : "none";
-                toggleBtn.innerText = isVisible ? "👀 파지점 끄기" : "👀 파지점 켜기";
-                toggleBtn.style.backgroundColor = isVisible ? "#ff5722" : "#4caf50";
-                
-                console.log("포인터 이벤트 발생!"); // 디버깅용
-            });
+                <div style="margin-bottom: 15px;">
+                    <button id="btn-poly-toggle" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #5e35b1; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📐 영역 찍기 모드: OFF</button>
+                    <button id="btn-poly-complete" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">✅ 이 다각형으로 영역 추출</button>
+                    <button id="btn-reset-boxes" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #546e7a; color: white; border: none; border-radius: 4px; cursor: pointer;">🔄 선택 영역 모두 초기화</button>
+                    <button id="btn-send-boxes" style="width: 100%; padding: 10px; background: #e65100; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">전체 선택영역 MoveIt 보내기</button>
+                </div>
 
+                <h3 style="margin: 20px 0 15px 0; font-size: 16px; border-bottom: 1px solid #444; padding-bottom: 8px;">🎯 파지점 (Grasp) 매니저</h3>
+                <div style="margin-bottom: 15px;">
+                    <button id="btn-toggle-grasp" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #00897b; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">👀 파지점 표시: ON</button>
+                </div>
+                <div style="margin-bottom: 5px; font-size: 12px; color: #aaa;" id="text-active-grasp">선택된 파지점: 없음</div>
+                <button id="btn-send-grasp" style="width: 100%; padding: 10px; background: #00838f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">선택한 파지점 자세 전송</button>
+            `;
+            editorUI.canvasContainer.dom.appendChild(panel);
 
-            editorUI.canvasContainer.dom.appendChild(toggleBtn);
+            const btnPolyToggle = document.getElementById('btn-poly-toggle')!;
+            const btnPolyComplete = document.getElementById('btn-poly-complete')!;
+            const btnResetBoxes = document.getElementById('btn-reset-boxes')!;
+            const btnSendBoxes = document.getElementById('btn-send-boxes')!;
+            const btnToggleGrasp = document.getElementById('btn-toggle-grasp')!;
+            const btnSendGrasp = document.getElementById('btn-send-grasp')!;
+            const textActiveGrasp = document.getElementById('text-active-grasp')!;
 
-            // 3. JSON 로드 (dist 폴더에 파일이 있어야 함)
-            const jsonUrl = new URL('/downsampled_points.json', document.baseURI).toString();
-            const response = await fetch(jsonUrl);
-            if (!response.ok) throw new Error("JSON 파일을 찾을 수 없습니다.");
-            const graspData = await response.json();
+            // --- 3. 상태 변수들 ---
+            let isPolyMode = false;
+            let polygonPoints: {x: number, y: number}[] = [];
+            let currentMousePos: {x: number, y: number} | null = null;
+            let isPolygonClosed = false; 
+            let completedPolygons: {x: number, y: number}[][] = []; 
+            
+            let moveItBoxes: any[] = []; 
+            let selectedPointIndices = new Set<number>(); 
+            
+            let activeGraspData: any = null;
+            const markers: any[] = [];
+            let isGraspVisible = true;
 
-            // 4. 마커 동그라미 생성
-            const markers: { dom: HTMLDivElement, pos: any }[] = [];
-            graspData.grasp_points.forEach((point: any) => {
+            // --- 4. JSON 다운로드 (캐시 무효화) ---
+            const jsonUrl1 = new URL(`/downsampled_points.json?t=${Date.now()}`, document.baseURI).toString();
+            const jsonUrl2 = new URL(`/grasp_points.json?t=${Date.now()}`, document.baseURI).toString();
+            
+            const response = await fetch(jsonUrl1, { cache: 'no-store' }).catch(() => fetch(jsonUrl2, { cache: 'no-store' }));
+            let graspData: any = { grasp_points: [] };
+            if (response && response.ok) graspData = await response.json();
+
+            graspData.grasp_points.forEach((point: any, index: number) => {
                 const marker = document.createElement('div');
-                //marker.innerText = point.rank.toString();
                 marker.style.position = 'absolute';
-                marker.style.width = '1px';
-                marker.style.height = '1px';
-                marker.style.marginLeft = '-12px';
-                marker.style.marginTop = '-12px';
+                marker.style.width = '12px';
+                marker.style.height = '12px';
+                marker.style.marginLeft = '-6px';
+                marker.style.marginTop = '-6px';
                 marker.style.borderRadius = '50%';
+                marker.style.backgroundColor = '#f44336';
                 marker.style.border = '2px solid white';
-                marker.style.boxShadow = '0 0 10px rgba(0,0,0,0.8)';
-                marker.style.display = 'flex';
-                marker.style.alignItems = 'center';
-                marker.style.justifyContent = 'center';
-                marker.style.color = 'white';
-                marker.style.fontWeight = 'bold';
-                marker.style.fontSize = '14px';
                 marker.style.cursor = 'pointer';
                 marker.style.pointerEvents = 'auto';
-                marker.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
 
-                // if (point.rank === 1) marker.style.backgroundColor = 'rgba(0, 255, 0, 0.8)';
-                // else if (point.rank === 2) marker.style.backgroundColor = 'rgba(255, 200, 0, 0.8)';
-                // else marker.style.backgroundColor = 'rgba(255, 0, 0, 0.8)';
+                const mObj = { dom: marker, pos: point.position, data: point };
 
                 marker.addEventListener('pointerdown', (e) => {
-                    e.stopPropagation(); // 3D 캔버스가 이벤트를 가로채거나 화면이 돌아가는 것을 방지
-                    console.log(`🎯 파지점 클릭됨! [Rank: ${point.rank}]`);
-                    console.log(`X: ${point.position.x}, Y: ${point.position.y}, Z: ${point.position.z}`);
-                    console.log(`NX: ${point.approach_vector.nx}, NY: ${point.approach_vector.ny}, NZ: ${point.approach_vector.nz}`);
-                    
-                    // 원한다면 alert로 화면에 띄울 수도 있습니다.
-                    // alert(`Rank: ${point.rank}\nX: ${point.position.x}\nY: ${point.position.y}\nZ: ${point.position.z}`);
+                    e.stopPropagation();
+                    markers.forEach(m => m.dom.style.backgroundColor = '#f44336');
+                    marker.style.backgroundColor = '#00e676';
+                    activeGraspData = point;
+                    textActiveGrasp.innerText = `선택됨: Rank ${point.rank || index + 1}`;
                 });
 
                 markersContainer.appendChild(marker);
-                markers.push({ dom: marker, pos: point.position });
+                markers.push(mObj);
             });
 
-            // 5. 3D -> 2D 화면 투영 (마커가 점구름을 완벽히 따라다니게 수학적 결합!)
-            events.on('prerender', () => {
-                if(markersContainer.style.display === 'none') return;
+            // --- 5. 버튼 이벤트 ---
+            btnToggleGrasp.addEventListener("pointerdown", (e) => {
+                e.stopPropagation();
+                isGraspVisible = !isGraspVisible;
+                markersContainer.style.display = isGraspVisible ? "block" : "none";
+                btnToggleGrasp.innerText = isGraspVisible ? "👀 파지점 표시: ON" : "👀 파지점 표시: OFF";
+                btnToggleGrasp.style.background = isGraspVisible ? "#00897b" : "#757575";
+            });
+
+            btnPolyToggle.addEventListener("pointerdown", (e) => {
+                e.stopPropagation();
+                isPolyMode = !isPolyMode;
+                if(isPolyMode) {
+                    btnPolyToggle.innerText = "🔒 캔버스 잠금 & 영역 찍기: ON";
+                    btnPolyToggle.style.background = "#d81b60";
+                    polyCanvas.style.pointerEvents = "auto";
+                } else {
+                    btnPolyToggle.innerText = "📐 영역 찍기 모드: OFF";
+                    btnPolyToggle.style.background = "#5e35b1";
+                    polyCanvas.style.pointerEvents = "none";
+                    polygonPoints = [];
+                    currentMousePos = null;
+                    isPolygonClosed = false;
+                }
+                scene.forceRender = true;
+            });
+
+            // 🌟 5-1. 완전 초기화 (초록색 점, 파란색 면 모두 삭제)
+            btnResetBoxes.addEventListener("pointerdown", (e) => {
+                e.stopPropagation();
+                moveItBoxes = [];
+                selectedPointIndices.clear(); // 초록색 점 날림
+                polygonPoints = [];
+                completedPolygons = []; // 파란색 면 날림
+                isPolygonClosed = false;
+                scene.forceRender = true; 
+            });
+
+            // 🌟 5-2. 전송 버튼 (데이터만 빼고, 파란색 면만 삭제, 초록색 점은 유지!)
+            btnSendBoxes.addEventListener("pointerdown", (e) => {
+                e.stopPropagation();
+                if (moveItBoxes.length === 0) return alert("⚠️ 지정된 선택 영역이 없습니다.");
                 
+                alert(`[MoveIt 충돌 객체 등록]\n총 ${moveItBoxes.length}개 영역 전송 완료!\n\n` + JSON.stringify(moveItBoxes, null, 2));
+                
+                // --- 핵심 패치 ---
+                moveItBoxes = []; // 전송했으니 박스 데이터는 초기화 (새로운 작업을 위해)
+                polygonPoints = [];
+                completedPolygons = []; // 파란색 다각형 껍데기들 초기화!
+                isPolygonClosed = false;
+                // 💡 selectedPointIndices.clear(); <-- 이 줄을 지웠습니다! 초록색 점은 영구 유지됨!
+                
+                scene.forceRender = true; 
+                console.log("🧹 전송 완료: 파란색 다각형은 지워졌으나, 초록색 포인트는 작업 내역으로 유지됩니다.");
+            });
+
+            btnSendGrasp.addEventListener("pointerdown", (e) => {
+                e.stopPropagation();
+                if (!activeGraspData) return alert("⚠️ 빨간색 파지점을 선택해주세요.");
+                alert(`[MoveIt 파지 자세 전송]\n\n` + JSON.stringify({
+                    id: "target_grasp_pose",
+                    position: [activeGraspData.position.x, activeGraspData.position.y, activeGraspData.position.z],
+                    approach_vector: [activeGraspData.approach_vector.nx, activeGraspData.approach_vector.ny, activeGraspData.approach_vector.nz],
+                    rank: activeGraspData.rank
+                }, null, 2));
+            });
+
+            // --- 6. 완벽한 화면 잠금 및 다각형 닫기 로직 ---
+            const blockEvent = (e: Event) => {
+                if(isPolyMode) { e.stopPropagation(); e.preventDefault(); }
+            };
+            polyCanvas.addEventListener("wheel", blockEvent, {passive: false});
+            polyCanvas.addEventListener("contextmenu", blockEvent);
+            polyCanvas.addEventListener("dblclick", blockEvent);
+
+            polyCanvas.addEventListener("pointerdown", (e) => {
+                if(!isPolyMode) return;
+                e.stopPropagation();
+                if(e.button !== 0) return;
+
+                if (isPolygonClosed) {
+                    polygonPoints = [];
+                    isPolygonClosed = false;
+                }
+
+                if (polygonPoints.length >= 3) {
+                    const dx = e.offsetX - polygonPoints[0].x;
+                    const dy = e.offsetY - polygonPoints[0].y;
+                    if (dx * dx + dy * dy < 144) { 
+                        isPolygonClosed = true;
+                        currentMousePos = null;
+                        scene.forceRender = true;
+                        return;
+                    }
+                }
+
+                polygonPoints.push({ x: e.offsetX, y: e.offsetY });
+                scene.forceRender = true; 
+            });
+
+            polyCanvas.addEventListener("pointermove", (e) => {
+                if(!isPolyMode) return;
+                e.stopPropagation();
+                if (!isPolygonClosed) {
+                    currentMousePos = { x: e.offsetX, y: e.offsetY };
+                    scene.forceRender = true; 
+                }
+            });
+
+            // --- 7. 초고도 최적화 3D 점 추출 ---
+            btnPolyComplete.addEventListener("pointerdown", (e) => {
+                e.stopPropagation();
+                if (polygonPoints.length < 3) return alert("⚠️ 최소 3개의 점을 찍어주세요!");
+
                 const baseCamera = scene.camera.camera;
                 const pcCamera = (baseCamera as any).camera || baseCamera;
                 const viewProj = (pcCamera as any)._viewProjMat?.data;
-                
-                if(!viewProj) return;
 
-                // 🌟 핵심: 로드된 3D 가우시안 모델(파인애플)의 현재 위치/회전/스케일 상태값을 빼옵니다.
-                let splatTransform = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; // 기본값
-                
+                let splatTransform = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
                 const elements = (scene as any).elements;
-                let activeSplat = null;
-                if (elements && elements.length > 0) {
-                    activeSplat = elements.find((e: any) => e.splatData);
-                }
-                if (!activeSplat) {
-                    activeSplat = events.invoke('selection'); // 선택된 스플랫 폴백
-                }
+                let activeSplat = elements && elements.length > 0 ? elements.find((el: any) => el.splatData) : null;
+                if (!activeSplat) activeSplat = events.invoke('selection');
+                if (activeSplat && activeSplat.worldTransform) splatTransform = activeSplat.worldTransform.data;
 
-                if (activeSplat && activeSplat.worldTransform) {
-                    splatTransform = activeSplat.worldTransform.data;
-                }
+                if (activeSplat && activeSplat.splatData && viewProj) {
+                    let numSplats = activeSplat.splatData.numSplats;
+                    let xData = activeSplat.splatData.getProp('x');
+                    let yData = activeSplat.splatData.getProp('y');
+                    let zData = activeSplat.splatData.getProp('z');
 
+                    if (xData && yData && zData) {
+                        const width = polyCanvas.width;
+                        const height = polyCanvas.height;
+
+                        let mvp = new Float32Array(16);
+                        for (let i = 0; i < 4; i++) {
+                            for (let j = 0; j < 4; j++) {
+                                mvp[i * 4 + j] = 
+                                    viewProj[0 * 4 + j] * splatTransform[i * 4 + 0] +
+                                    viewProj[1 * 4 + j] * splatTransform[i * 4 + 1] +
+                                    viewProj[2 * 4 + j] * splatTransform[i * 4 + 2] +
+                                    viewProj[3 * 4 + j] * splatTransform[i * 4 + 3];
+                            }
+                        }
+
+                        let polyMinX = Math.min(...polygonPoints.map(p => p.x));
+                        let polyMaxX = Math.max(...polygonPoints.map(p => p.x));
+                        let polyMinY = Math.min(...polygonPoints.map(p => p.y));
+                        let polyMaxY = Math.max(...polygonPoints.map(p => p.y));
+
+                        let minX = Infinity, minY = Infinity, minZ = Infinity;
+                        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+                        let count = 0;
+
+                        for (let i = 0; i < numSplats; i++) {
+                            let x = xData[i]; let y = yData[i]; let z = zData[i];
+
+                            let clipW = x * mvp[3] + y * mvp[7] + z * mvp[11] + mvp[15];
+                            if (clipW < 0.1) continue;
+
+                            let clipX = x * mvp[0] + y * mvp[4] + z * mvp[8] + mvp[12];
+                            let clipY = x * mvp[1] + y * mvp[5] + z * mvp[9] + mvp[13];
+
+                            let screenX = ((clipX / clipW) * 0.5 + 0.5) * width;
+                            let screenY = ((-clipY / clipW) * 0.5 + 0.5) * height;
+
+                            if (screenX < polyMinX || screenX > polyMaxX || screenY < polyMinY || screenY > polyMaxY) continue; 
+
+                            let isInside = false;
+                            for (let pi = 0, pj = polygonPoints.length - 1; pi < polygonPoints.length; pj = pi++) {
+                                let xi = polygonPoints[pi].x, yi = polygonPoints[pi].y;
+                                let xj = polygonPoints[pj].x, yj = polygonPoints[pj].y;
+                                let intersect = ((yi > screenY) != (yj > screenY)) && (screenX < (xj - xi) * (screenY - yi) / (yj - yi) + xi);
+                                if (intersect) isInside = !isInside;
+                            }
+
+                            if (isInside) {
+                                let worldX = x * splatTransform[0] + y * splatTransform[4] + z * splatTransform[8] + splatTransform[12];
+                                let worldY = x * splatTransform[1] + y * splatTransform[5] + z * splatTransform[9] + splatTransform[13];
+                                let worldZ = x * splatTransform[2] + y * splatTransform[6] + z * splatTransform[10] + splatTransform[14];
+
+                                selectedPointIndices.add(i); // 🌟 초록 점 데이터 영구 추가
+                                minX = Math.min(minX, worldX);
+                                minY = Math.min(minY, worldY);
+                                minZ = Math.min(minZ, worldZ);
+                                maxX = Math.max(maxX, worldX);
+                                maxY = Math.max(maxY, worldY);
+                                maxZ = Math.max(maxZ, worldZ);
+                                count++;
+                            }
+                        }
+
+                        if (count > 0) {
+                            const PADDING = 0.02;
+                            moveItBoxes.push({
+                                id: "obstacle_poly_" + Date.now().toString().slice(-4),
+                                point_count: count,
+                                size: [
+                                    Number((Math.max(maxX - minX, PADDING)).toFixed(4)), 
+                                    Number((Math.max(maxY - minY, PADDING)).toFixed(4)), 
+                                    Number((Math.max(maxZ - minZ, PADDING)).toFixed(4))
+                                ],
+                                position: [
+                                    Number(((maxX + minX) / 2).toFixed(4)), 
+                                    Number(((maxY + minY) / 2).toFixed(4)), 
+                                    Number(((maxZ + minZ) / 2).toFixed(4))
+                                ]
+                            });
+                            completedPolygons.push([...polygonPoints]);
+                            console.log(`✅ 고속 추출 완료: ${count}개 포인트 포함`);
+                        } else {
+                            alert("⚠️ 다각형 영역 내부에 포인트가 없습니다.");
+                        }
+                    }
+                }
+                
+                polygonPoints = [];
+                currentMousePos = null;
+                isPolygonClosed = false;
+                scene.forceRender = true;
+            });
+
+            // --- 8. 렌더링 루프 ---
+            events.on('prerender', () => {
                 const width = editorUI.canvasContainer.dom.offsetWidth;
                 const height = editorUI.canvasContainer.dom.offsetHeight;
 
-                markers.forEach(m => {
-                    const localX = m.pos.x;
-                    const localY = m.pos.y;
-                    const localZ = m.pos.z;
+                if (polyCanvas.width !== width || polyCanvas.height !== height) {
+                    polyCanvas.width = width;
+                    polyCanvas.height = height;
+                }
 
-                    // [1단계] 마커의 원본 좌표를 파인애플이 이동/회전한 만큼 똑같이 이동시킵니다 (행렬 곱셈)
-                    let worldX = localX * splatTransform[0] + localY * splatTransform[4] + localZ * splatTransform[8] + splatTransform[12];
-                    let worldY = localX * splatTransform[1] + localY * splatTransform[5] + localZ * splatTransform[9] + splatTransform[13];
-                    let worldZ = localX * splatTransform[2] + localY * splatTransform[6] + localZ * splatTransform[10] + splatTransform[14];
+                if (polyCtx) {
+                    polyCtx.clearRect(0, 0, width, height);
 
-                    // [2단계] 화면에 보이도록 카메라 렌즈 투영
-                    let clipX = worldX * viewProj[0] + worldY * viewProj[4] + worldZ * viewProj[8] + viewProj[12];
-                    let clipY = worldX * viewProj[1] + worldY * viewProj[5] + worldZ * viewProj[9] + viewProj[13];
-                    let clipW = worldX * viewProj[3] + worldY * viewProj[7] + worldZ * viewProj[11] + viewProj[15];
+                    // 완료된 다각형 렌더링
+                    completedPolygons.forEach(poly => {
+                        polyCtx.beginPath();
+                        polyCtx.moveTo(poly[0].x, poly[0].y);
+                        for (let i = 1; i < poly.length; i++) polyCtx.lineTo(poly[i].x, poly[i].y);
+                        polyCtx.closePath();
+                        polyCtx.fillStyle = 'rgba(0, 150, 255, 0.3)';
+                        polyCtx.fill();
+                        polyCtx.lineWidth = 2;
+                        polyCtx.strokeStyle = 'rgba(0, 150, 255, 0.8)';
+                        polyCtx.stroke();
+                    });
 
-                    if (clipW > 0.1) {
-                        const ndcX = clipX / clipW;
-                        const ndcY = clipY / clipW;
-                        const screenX = (ndcX * 0.5 + 0.5) * width;
-                        const screenY = (-ndcY * 0.5 + 0.5) * height; // Y축 반전
-                        m.dom.style.left = `${screenX}px`;
-                        m.dom.style.top = `${screenY}px`;
-                        m.dom.style.display = 'flex';
-                    } else {
-                        m.dom.style.display = 'none'; // 등 뒤로 가면 숨김
+                    // 현재 그리고 있는 다각형 렌더링
+                    if (polygonPoints.length > 0 && isPolyMode) {
+                        polyCtx.beginPath();
+                        polyCtx.moveTo(polygonPoints[0].x, polygonPoints[0].y);
+                        for (let i = 1; i < polygonPoints.length; i++) {
+                            polyCtx.lineTo(polygonPoints[i].x, polygonPoints[i].y);
+                        }
+                        
+                        if (isPolygonClosed) {
+                            polyCtx.closePath();
+                            polyCtx.fillStyle = 'rgba(0, 150, 255, 0.4)';
+                            polyCtx.fill();
+                        } else {
+                            if (currentMousePos) polyCtx.lineTo(currentMousePos.x, currentMousePos.y);
+                            polyCtx.fillStyle = 'rgba(0, 150, 255, 0.15)';
+                            polyCtx.fill();
+                        }
+
+                        polyCtx.lineWidth = 2;
+                        polyCtx.strokeStyle = 'rgba(0, 150, 255, 0.8)';
+                        polyCtx.stroke();
+
+                        polygonPoints.forEach((p, idx) => {
+                            polyCtx.beginPath();
+                            let isStartPoint = (idx === 0 && !isPolygonClosed && polygonPoints.length >= 3);
+                            polyCtx.arc(p.x, p.y, isStartPoint ? 8 : 4, 0, Math.PI * 2);
+                            polyCtx.fillStyle = isStartPoint ? 'yellow' : 'red';
+                            polyCtx.fill();
+                            if (isStartPoint) {
+                                polyCtx.lineWidth = 2;
+                                polyCtx.strokeStyle = 'red';
+                                polyCtx.stroke();
+                            }
+                        });
                     }
-                });
+
+                    const baseCamera = scene.camera.camera;
+                    const pcCamera = (baseCamera as any).camera || baseCamera;
+                    const viewProj = (pcCamera as any)._viewProjMat?.data;
+
+                    let splatTransform = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+                    const elements = (scene as any).elements;
+                    let activeSplat = elements && elements.length > 0 ? elements.find((el: any) => el.splatData) : null;
+                    if (!activeSplat) activeSplat = events.invoke('selection');
+                    if (activeSplat && activeSplat.worldTransform) splatTransform = activeSplat.worldTransform.data;
+
+                    // 파지점 마커 위치
+                    if (markersContainer.style.display !== 'none' && viewProj) {
+                        markers.forEach(m => {
+                            const localX = m.pos.x;
+                            const localY = m.pos.y;
+                            const localZ = m.pos.z;
+
+                            let worldX = localX * splatTransform[0] + localY * splatTransform[4] + localZ * splatTransform[8] + splatTransform[12];
+                            let worldY = localX * splatTransform[1] + localY * splatTransform[5] + localZ * splatTransform[9] + splatTransform[13];
+                            let worldZ = localX * splatTransform[2] + localY * splatTransform[6] + localZ * splatTransform[10] + splatTransform[14];
+
+                            let clipX = worldX * viewProj[0] + worldY * viewProj[4] + worldZ * viewProj[8] + viewProj[12];
+                            let clipY = worldX * viewProj[1] + worldY * viewProj[5] + worldZ * viewProj[9] + viewProj[13];
+                            let clipW = worldX * viewProj[3] + worldY * viewProj[7] + worldZ * viewProj[11] + viewProj[15];
+
+                            if (clipW > 0.1) {
+                                m.dom.style.left = `${((clipX / clipW) * 0.5 + 0.5) * width}px`;
+                                m.dom.style.top = `${((-clipY / clipW) * 0.5 + 0.5) * height}px`;
+                                m.dom.style.display = 'block';
+                            } else {
+                                m.dom.style.display = 'none';
+                            }
+                        });
+                    }
+
+                    // 선택된 3D 점 네온 그린 오버레이
+                    if (selectedPointIndices.size > 0 && activeSplat && activeSplat.splatData && viewProj) {
+                        let xData = activeSplat.splatData.getProp('x');
+                        let yData = activeSplat.splatData.getProp('y');
+                        let zData = activeSplat.splatData.getProp('z');
+
+                        let mvp = new Float32Array(16);
+                        for (let i = 0; i < 4; i++) {
+                            for (let j = 0; j < 4; j++) {
+                                mvp[i * 4 + j] = 
+                                    viewProj[0 * 4 + j] * splatTransform[i * 4 + 0] +
+                                    viewProj[1 * 4 + j] * splatTransform[i * 4 + 1] +
+                                    viewProj[2 * 4 + j] * splatTransform[i * 4 + 2] +
+                                    viewProj[3 * 4 + j] * splatTransform[i * 4 + 3];
+                            }
+                        }
+
+                        polyCtx.fillStyle = 'rgba(57, 255, 20, 0.9)';
+                        polyCtx.beginPath();
+
+                        selectedPointIndices.forEach(idx => {
+                            let x = xData[idx]; let y = yData[idx]; let z = zData[idx];
+                            let clipW = x * mvp[3] + y * mvp[7] + z * mvp[11] + mvp[15];
+                            if (clipW > 0.1) {
+                                let clipX = x * mvp[0] + y * mvp[4] + z * mvp[8] + mvp[12];
+                                let clipY = x * mvp[1] + y * mvp[5] + z * mvp[9] + mvp[13];
+                                polyCtx.rect(((clipX / clipW) * 0.5 + 0.5) * width - 1, ((-clipY / clipW) * 0.5 + 0.5) * height - 1, 3, 3);
+                            }
+                        });
+                        polyCtx.fill();
+                    }
+                }
             });
 
-            // 6. PLY 자동 로드 (dist 폴더에 파일이 있어야 함)
-            const plyUrl = new URL('/point_cloud.ply', document.baseURI).toString();
-            events.invoke('import', [{
-                filename: 'point_cloud.ply',
-                url: plyUrl
-            }]);
+            // 🌟 9. PLY 강제 다운로드
+            try {
+                const plyFetchUrl = new URL(`/point_cloud.ply?t=${Date.now()}`, document.baseURI).toString();
+                const plyRes = await fetch(plyFetchUrl, { cache: 'no-store' }); 
+                const plyBlob = await plyRes.blob();
+                const plyFile = new File([plyBlob], 'point_cloud.ply', { type: 'application/octet-stream' });
+                events.invoke('import', [{ filename: 'point_cloud.ply', contents: plyFile }]);
+            } catch (err) {
+                console.error("PLY 강제 로드 실패:", err);
+            }
 
         } catch (error) {
-            console.warn("파지점 로드 실패:", error);
+            console.warn("로직 실행 실패:", error);
         }
     }, 1500); 
     // =========================================================
