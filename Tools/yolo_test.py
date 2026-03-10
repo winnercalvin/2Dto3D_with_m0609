@@ -2,7 +2,7 @@ import cv2
 from ultralytics import YOLO
 
 # 1. 학습한 모델 불러오기 (경로를 본인의 best.pt 위치로 수정하세요)
-model_path = '/home/sehoon/Tools/fruit/bestpt_collecting/best_fruit_test_v4.pt' 
+model_path = '/home/sehoon/0309/yolov11n_add/best.pt' 
 model = YOLO(model_path)
 
 # 2. 카메라 설정 
@@ -22,7 +22,7 @@ while True:
 
     # 3. 모델로 예측 수행 (conf 인자로 최소 확률 설정 가능)
     # stream=True는 메모리 효율을 위해 사용합니다.
-    results = model(frame, stream=True, conf=0.25) # 25% 확률 이상만 표시
+    results = model(frame, stream=True, conf=0.5) # 25% 확률 이상만 표시
 
     for r in results:
         # 화면에 박스와 컨피던스(conf)를 그려준 이미지를 가져옴
