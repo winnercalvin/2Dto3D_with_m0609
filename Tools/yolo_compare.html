@@ -3,166 +3,309 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YOLO 학습 결과 비교기</title>
+    <title>YOLO 학습 결과 통합 대시보드</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #f8f9fa; }
-        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1 { text-align: center; color: #333; }
-        .controls { display: flex; gap: 15px; margin-bottom: 20px; justify-content: center; align-items: center; flex-wrap: wrap; }
-        input[type="file"] { padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
-        select { padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
-        .chart-container { position: relative; height: 60vh; width: 100%; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 20px; background-color: #f8f9fa; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; margin-bottom: 30px; }
+        .input-section { background: #f1f4f9; padding: 20px; border-radius: 8px; border: 1px solid #ddd; text-align: center; }
+        .input-section h3 { margin-top: 0; font-size: 16px; color: #4363d8; }
+        input[type="file"], select { width: 30%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; margin: 10px 5px; font-size: 15px; }
+        .chart-container { position: relative; height: 50vh; width: 100%; margin-bottom: 40px; margin-top: 30px; }
+        
+        .report-section { margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px; overflow-x: auto; }
+        .section-title { color:#333; text-align: center; margin-top: 20px; margin-bottom: 15px; font-size: 20px; }
+        
+        .report-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; text-align: center; white-space: nowrap; margin-bottom: 40px; }
+        .report-table th, .report-table td { border: 1px solid #ddd; padding: 10px; color: #000000 !important; vertical-align: middle; }
+        .report-table th { background-color: #4363d8; color: white !important; font-weight: bold; }
+        .report-table tr:nth-child(even) { background-color: #f9f9f9; }
+        .report-table tr:hover { background-color: #f1f1f1; }
+        
+        .row-all { font-weight: bold; background-color: #e8efff !important; }
+        .file-name-cell { color: #4363d8 !important; font-weight: bold; text-align: left; }
+        
+        .summary-table th { background-color: #2c3e50; }
+        .summary-table .row-all { background-color: #fffde7 !important; } 
+        
+        /* 최고 성능 하이라이트 스타일 */
+        .best-val { background-color: #e8f5e9 !important; font-weight: bold; color: #2e7d32 !important; box-shadow: inset 0 0 0 1px #2e7d32; }
+        
+        .notice { text-align: center; color: #666; font-size: 13px; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>YOLO 학습 결과 통합 비교</h1>
+    <h1>YOLO 학습 결과 통합 대시보드</h1>
     
-    <div class="controls">
-        <input type="file" id="csvFileInput" accept=".csv" multiple>
-        
-        <select id="metricSelector">
-            <option value="metrics/mAP50-95(B)">mAP50-95 (B)</option>
-            <option value="metrics/mAP50(B)">mAP50 (B)</option>
-            <option value="metrics/precision(B)">Precision</option>
-            <option value="metrics/recall(B)">Recall</option>
-            <option value="val/box_loss">Val Box Loss</option>
-            <option value="val/cls_loss">Val Cls Loss</option>
-            <option value="train/box_loss">Train Box Loss</option>
-            <option value="train/cls_loss">Train Cls Loss</option>
-        </select>
+    <div class="input-section">
+        <h3>비교할 results.csv 파일 업로드</h3>
+        <div>
+            <input type="file" id="csvFileInput" accept=".csv" multiple>
+            <select id="metricSelector">
+                <option value="F1-Score">F1 Score</option>
+                <option value="metrics/mAP50-95(B)">mAP50-95 (B)</option>
+                <option value="metrics/mAP50(B)">mAP50 (B)</option>
+                <option value="metrics/precision(B)">Precision</option>
+                <option value="metrics/recall(B)">Recall</option>
+                <option value="val/box_loss">Val Box Loss</option>
+            </select>
+        </div>
     </div>
 
     <div class="chart-container">
         <canvas id="myChart"></canvas>
     </div>
+
+    <div id="reportContainer" class="report-section">
+        <h3 class="section-title">모델별 최종 요약(ALL) 비교</h3>
+        <p class="notice">* 초록색 음영은 전체 모델 중 'ALL' 기준 가장 우수한 지표를 의미합니다.</p>
+        <div id="summaryTableArea">
+            <p style="color: #666; text-align:center;">파일을 업로드하면 핵심 비교 표가 생성됩니다.</p>
+        </div>
+
+        <hr style="border: 1px dashed #ccc; margin: 40px 0;">
+
+        <h3 class="section-title">클래스별 상세 성능 리포트</h3>
+        <p class="notice">* 초록색 음영은 각 클래스(Battery, Bomb, Wire) 내에서 가장 우수한 모델의 지표를 의미합니다.</p>
+        <div id="tablesArea">
+            <p style="color: #666; text-align:center;">파일을 업로드하면 상세 비교 표가 생성됩니다.</p>
+        </div>
+    </div>
 </div>
 
 <script>
     let myChart = null;
-    let parsedDataList = []; // 각 파일의 데이터를 저장할 배열
+    let parsedDataList = [];
+    let tableDataList = []; 
 
     const fileInput = document.getElementById('csvFileInput');
     const metricSelector = document.getElementById('metricSelector');
+    const summaryTableArea = document.getElementById('summaryTableArea');
+    const tablesArea = document.getElementById('tablesArea');
     const ctx = document.getElementById('myChart').getContext('2d');
 
-    // 파일이 업로드되면 실행
+    // 지표별 최적화 방향 (시간/복잡도는 min이 best)
+    const metricDirections = {
+        'p': 'max', 'r': 'max', 'map50': 'max', 'map95': 'max', 'f1': 'max',
+        'time_ms': 'min', 'fps': 'max', 'params': 'min', 'gflops': 'min', 'total_time': 'min'
+    };
+
     fileInput.addEventListener('change', async (event) => {
         const files = event.target.files;
         if (files.length === 0) return;
+        
+        parsedDataList = [];
+        tableDataList = [];
 
-        parsedDataList = []; // 초기화
-
-        // 선택된 모든 파일을 읽음
         for (let file of files) {
             const text = await readFileAsync(file);
             const data = parseYoloCSV(text);
-            parsedDataList.push({ name: file.name.replace('.csv', ''), data: data });
+            const cleanFileName = file.name.replace(/\.csv$/i, '');
+            parsedDataList.push({ name: cleanFileName, data: data });
+            
+            const extracted = extractReportData(cleanFileName, text);
+            if (extracted) tableDataList.push(extracted);
         }
 
+        if (tableDataList.length > 0) renderTables();
         updateChart();
     });
 
-    // 지표(mAP, Loss 등)를 변경하면 실행
-    metricSelector.addEventListener('change', () => {
-        updateChart();
-    });
+    metricSelector.addEventListener('change', () => updateChart());
 
-    // 파일 읽기 (Promise)
     function readFileAsync(file) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
             reader.readAsText(file);
         });
     }
 
-    // YOLO CSV 파싱 함수
     function parseYoloCSV(csvText) {
         const lines = csvText.trim().split('\n');
-        // 첫 줄은 헤더 (공백 제거 중요)
         const headers = lines[0].split(',').map(h => h.trim());
-        
         let result = {};
         headers.forEach(h => result[h] = []);
 
-        // 데이터 파싱
+        const pIdx = headers.findIndex(h => h.includes('precision'));
+        const rIdx = headers.findIndex(h => h.includes('recall'));
+        result['F1-Score'] = [];
+
         for (let i = 1; i < lines.length; i++) {
-            if (!lines[i].trim()) continue;
-            const values = lines[i].split(',').map(v => parseFloat(v.trim()));
-            headers.forEach((h, index) => {
-                if (!isNaN(values[index])) {
-                    result[h].push(values[index]);
-                }
-            });
+            const values = lines[i].split(',').map(v => v.trim());
+            if (!isNaN(parseFloat(values[0]))) {
+                headers.forEach((h, idx) => {
+                    const val = parseFloat(values[idx]);
+                    if (!isNaN(val)) result[h].push(val);
+                });
+                const p = parseFloat(values[pIdx]);
+                const r = parseFloat(values[rIdx]);
+                const f1 = (p + r) > 0 ? (2 * p * r) / (p + r) : 0;
+                result['F1-Score'].push(f1);
+            }
         }
         return result;
     }
 
-    // 그래프 업데이트 함수
-    function updateChart() {
-        if (parsedDataList.length === 0) return;
+    function extractReportData(fileName, csvText) {
+        const lines = csvText.trim().split('\n');
+        const headers = lines[0].split(',').map(h => h.trim());
 
-        const selectedMetric = metricSelector.value;
-        const datasets = [];
+        const getIdx = (str) => headers.findIndex(h => h.includes(str));
+        const pIdx = getIdx('precision');
+        const rIdx = getIdx('recall');
+        const map50Idx = getIdx('mAP50(B)');
+        const map95Idx = getIdx('mAP50-95');
+        const f1Idx = getIdx('F1-Score');
+        const latencyIdx = getIdx('추론속도'); 
+        const fpsIdx = getIdx('FPS');
+        const paramsIdx = getIdx('Params');
+        const gflopsIdx = getIdx('GFLOPs');
+        const timeIdx = getIdx('총학습시간');
 
-        // 색상 팔레트
-        const colors = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
+        let classData = {};
+        let hasData = false;
 
-        let maxEpochs = 0;
+        const parseNum = (val) => {
+            if (val === undefined || val === null || val === '-' || val === '') return null;
+            const num = parseFloat(val);
+            return isNaN(num) ? null : num;
+        };
 
-        parsedDataList.forEach((item, index) => {
-            // 선택한 지표의 데이터가 있는지 확인 (YOLO 버전에 따라 이름이 미세하게 다를 수 있음)
-            const metricKey = Object.keys(item.data).find(k => k.includes(selectedMetric.split('/')[1])); 
-            
-            if (metricKey && item.data[metricKey]) {
-                const dataPoints = item.data[metricKey];
-                maxEpochs = Math.max(maxEpochs, dataPoints.length);
+        for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(',').map(v => v.trim());
+            const firstCol = values[0];
+
+            if (firstCol.includes('Class:') || firstCol.includes('SUMMARY')) {
+                hasData = true;
+                let className = firstCol.replace('Class:', '').replace('SUMMARY (ALL)', 'ALL').trim();
                 
-                datasets.push({
-                    label: item.name,
-                    data: dataPoints,
-                    borderColor: colors[index % colors.length],
-                    backgroundColor: colors[index % colors.length],
-                    borderWidth: 2,
-                    pointRadius: 1, // 점 크기 최소화
-                    tension: 0.3, // 선을 약간 부드럽게
-                    fill: false
+                let p = parseNum(values[pIdx]);
+                let r = parseNum(values[rIdx]);
+                classData[className] = {
+                    p: p, r: r, 
+                    map50: parseNum(values[map50Idx]), 
+                    map95: parseNum(values[map95Idx]),
+                    f1: (f1Idx !== -1 && values[f1Idx] !== '-' && values[f1Idx] !== '') ? parseNum(values[f1Idx]) : (p && r ? (2*p*r)/(p+r) : null),
+                    time_ms: parseNum(latencyIdx !== -1 ? values[latencyIdx] : null),
+                    fps: parseNum(fpsIdx !== -1 ? values[fpsIdx] : null),
+                    params: parseNum(paramsIdx !== -1 ? values[paramsIdx] : null),
+                    gflops: parseNum(gflopsIdx !== -1 ? values[gflopsIdx] : null),
+                    total_time: parseNum(timeIdx !== -1 ? values[timeIdx] : null)
+                };
+            }
+        }
+        return hasData ? { modelName: fileName, rows: classData } : null;
+    }
+
+    function renderTables() {
+        // 클래스별 최고/최저 수치 계산
+        let bestValues = {};
+        tableDataList.forEach(model => {
+            Object.keys(model.rows).forEach(cls => {
+                if (!bestValues[cls]) bestValues[cls] = {};
+                Object.keys(metricDirections).forEach(metric => {
+                    const val = model.rows[cls][metric];
+                    if (val !== null) {
+                        if (bestValues[cls][metric] === undefined) bestValues[cls][metric] = val;
+                        else {
+                            if (metricDirections[metric] === 'max') bestValues[cls][metric] = Math.max(bestValues[cls][metric], val);
+                            else bestValues[cls][metric] = Math.min(bestValues[cls][metric], val);
+                        }
+                    }
                 });
+            });
+        });
+
+        const formatTd = (val, cls, metric, isF1 = false) => {
+            if (val === null) return '<td>-</td>';
+            const precision = ['p', 'r', 'map50', 'map95', 'f1'].includes(metric) ? 4 : 2;
+            const isBest = val.toFixed(precision) === bestValues[cls][metric].toFixed(precision);
+            const displayStr = val.toFixed(precision);
+            
+            let classes = isBest ? 'best-val' : '';
+            let style = (isF1 && !isBest) ? 'color:#e6194b !important; font-weight:bold;' : '';
+
+            return `<td class="${classes}" style="${style}">${displayStr}</td>`;
+        };
+
+        // 1. ALL 요약표 생성 (그대로 유지)
+        let summaryHtml = '';
+        tableDataList.forEach(model => {
+            if (model.rows['ALL']) {
+                const d = model.rows['ALL'];
+                summaryHtml += `<tr class="row-all"><td class="file-name-cell">${model.modelName}</td><td style="text-transform: capitalize;">ALL</td>
+                    ${formatTd(d.p, 'ALL', 'p')}${formatTd(d.r, 'ALL', 'r')}${formatTd(d.map50, 'ALL', 'map50')}${formatTd(d.map95, 'ALL', 'map95')}
+                    ${formatTd(d.f1, 'ALL', 'f1', true)}${formatTd(d.time_ms, 'ALL', 'time_ms')}${formatTd(d.fps, 'ALL', 'fps')}
+                    ${formatTd(d.params, 'ALL', 'params')}${formatTd(d.gflops, 'ALL', 'gflops')}${formatTd(d.total_time, 'ALL', 'total_time')}</tr>`;
             }
         });
 
-        const labels = Array.from({length: maxEpochs}, (_, i) => i + 1);
+        // 2. 상세 표 생성 (클래스 기준으로 그룹핑)
+        let classArray = [];
+        tableDataList.forEach(model => {
+            Object.keys(model.rows).forEach(cls => {
+                if (cls !== 'ALL' && !classArray.includes(cls)) classArray.push(cls);
+            });
+        });
+        classArray.sort(); // Battery, Bomb, Wire 순서로 정렬
 
-        // 기존 차트가 있으면 파괴 후 다시 그림
-        if (myChart) {
-            myChart.destroy();
-        }
+        let detailHtml = '';
+        classArray.forEach(cls => {
+            let modelsWithClass = tableDataList.filter(m => m.rows[cls] !== undefined);
+            
+            modelsWithClass.forEach((model, idx) => {
+                detailHtml += `<tr>`;
+                
+                // 그룹 첫 번째 줄에 클래스 이름 합치기 (rowspan)
+                if (idx === 0) {
+                    detailHtml += `<td rowspan="${modelsWithClass.length}" style="text-transform: capitalize; font-weight:bold; background-color:#e8efff; font-size:16px; border-right: 2px solid #ccc;">${cls}</td>`;
+                }
+                
+                const d = model.rows[cls];
+                detailHtml += `<td class="file-name-cell">${model.modelName}</td>
+                    ${formatTd(d.p, cls, 'p')}${formatTd(d.r, cls, 'r')}${formatTd(d.map50, cls, 'map50')}${formatTd(d.map95, cls, 'map95')}
+                    ${formatTd(d.f1, cls, 'f1', true)}${formatTd(d.time_ms, cls, 'time_ms')}${formatTd(d.fps, cls, 'fps')}
+                    ${formatTd(d.params, cls, 'params')}${formatTd(d.gflops, cls, 'gflops')}${formatTd(d.total_time, cls, 'total_time')}</tr>`;
+            });
+        });
 
+        // 테이블 헤더 분리 (상세 표는 Class가 맨 앞으로 옴)
+        const summaryHeader = `<thead><tr><th>모델명</th><th>Class</th><th>Precision</th><th>Recall</th><th>mAP50</th><th>mAP50-95</th>
+            <th>F1-Score</th><th>추론 시간(ms)</th><th>FPS</th><th>Params(m)</th><th>GFLOPs</th><th>총 학습 시간(s)</th></tr></thead>`;
+            
+        const detailHeader = `<thead><tr><th>Class</th><th>모델명</th><th>Precision</th><th>Recall</th><th>mAP50</th><th>mAP50-95</th>
+            <th>F1-Score</th><th>추론 시간(ms)</th><th>FPS</th><th>Params(m)</th><th>GFLOPs</th><th>총 학습 시간(s)</th></tr></thead>`;
+
+        summaryTableArea.innerHTML = `<table class="report-table summary-table">${summaryHeader}<tbody>${summaryHtml}</tbody></table>`;
+        tablesArea.innerHTML = `<table class="report-table">${detailHeader}<tbody>${detailHtml}</tbody></table>`;
+    }
+
+    function updateChart() {
+        if (parsedDataList.length === 0) return;
+        const selectedMetric = metricSelector.value;
+        const datasets = [];
+        const colors = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#000000', '#fabebe', '#008080'];
+        let maxLen = 0;
+
+        parsedDataList.forEach((item, index) => {
+            const dataPoints = item.data[selectedMetric] || [];
+            maxLen = Math.max(maxLen, dataPoints.length);
+            datasets.push({
+                label: item.name, data: dataPoints, borderColor: colors[index % colors.length], fill: false, tension: 0.2, pointRadius: 1
+            });
+        });
+
+        if (myChart) myChart.destroy();
         myChart = new Chart(ctx, {
             type: 'line',
-            data: {
-                labels: labels,
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'top' },
-                    title: { display: true, text: `${selectedMetric} 비교` }
-                },
-                scales: {
-                    x: { title: { display: true, text: 'Epochs' } },
-                    y: { title: { display: true, text: 'Value' } }
-                }
-            }
+            data: { labels: Array.from({length: maxLen}, (_, i) => i + 1), datasets: datasets },
+            options: { responsive: true, maintainAspectRatio: false }
         });
     }
 </script>
-
 </body>
 </html>
