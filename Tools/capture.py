@@ -3,7 +3,7 @@ import os
 import re
 
 # 1. 저장 경로 설정 (수정된 부분)
-save_path = '/home/sehoon/Tools/test_images'
+save_path = '/home/sehoon/add_pic'
 
 if not os.path.exists(save_path):
     os.makedirs(save_path)
