@@ -211,7 +211,7 @@ const main = async () => {
             polyCanvas.style.position = 'absolute';
             polyCanvas.style.top = '0';
             polyCanvas.style.left = '0';
-            polyCanvas.style.width = '100%'; 
+            polyCanvas.style.width = '100%';
             polyCanvas.style.height = '100%';
             polyCanvas.style.pointerEvents = 'none';
             polyCanvas.style.zIndex = '1002';
@@ -244,7 +244,6 @@ const main = async () => {
             panel.style.pointerEvents = 'auto';
             panel.innerHTML = `
                 <h3 style="margin: 0 0 15px 0; font-size: 16px; border-bottom: 1px solid #444; padding-bottom: 8px;">📦 MoveIt 다각형 영역 선택</h3>
-                
                 <div style="margin-bottom: 15px;">
                     <button id="btn-poly-toggle" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #5e35b1; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📐 영역 찍기 모드: OFF</button>
                     <button id="btn-poly-complete" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">✅ 이 다각형으로 영역 추출</button>
@@ -273,45 +272,47 @@ const main = async () => {
             let isPolyMode = false;
             let polygonPoints: {x: number, y: number}[] = [];
             let currentMousePos: {x: number, y: number} | null = null;
-            let isPolygonClosed = false; 
-            let completedPolygons: {x: number, y: number}[][] = []; 
-            
-            let moveItBoxes: any[] = []; 
-            let selectedPointIndices = new Set<number>(); 
-            
+            let isPolygonClosed = false;
+            let completedPolygons: {x: number, y: number}[][] = [];
+            let moveItBoxes: any[] = [];
+            let selectedPointIndices = new Set<number>();
             let activeGraspData: any = null;
             const markers: any[] = [];
             let isGraspVisible = true;
 
-            // --- 4. JSON 다운로드 (캐시 무효화) ---
+            // --- 4. JSON 다운로드 (캐시 무효화 및 새로운 데이터 구조 매핑) ---
             const jsonUrl1 = new URL(`/downsampled_points.json?t=${Date.now()}`, document.baseURI).toString();
             const jsonUrl2 = new URL(`/grasp_points.json?t=${Date.now()}`, document.baseURI).toString();
-            
             const response = await fetch(jsonUrl1, { cache: 'no-store' }).catch(() => fetch(jsonUrl2, { cache: 'no-store' }));
-            let graspData: any = { grasp_points: [] };
+            let graspData: any = {};
             if (response && response.ok) graspData = await response.json();
 
-            graspData.grasp_points.forEach((point: any, index: number) => {
+            // 🌟 수정포인트: valid_grasps 배열로 데이터 접근
+            const graspsList = graspData.valid_grasps || graspData.grasp_points || [];
+
+            graspsList.forEach((point: any, index: number) => {
                 const marker = document.createElement('div');
                 marker.style.position = 'absolute';
-                marker.style.width = '12px';
-                marker.style.height = '12px';
+                marker.style.width = '4px';
+                marker.style.height = '4px';
                 marker.style.marginLeft = '-6px';
                 marker.style.marginTop = '-6px';
                 marker.style.borderRadius = '50%';
                 marker.style.backgroundColor = '#f44336';
-                marker.style.border = '2px solid white';
+                //marker.style.border = '2px solid white';
                 marker.style.cursor = 'pointer';
                 marker.style.pointerEvents = 'auto';
 
-                const mObj = { dom: marker, pos: point.position, data: point };
+                // 🌟 수정포인트: point.tcp_x, tcp_y, tcp_z를 3D 공간 투영용으로 매핑
+                const mObj = { dom: marker, pos: { x: point.tcp_x, y: point.tcp_y, z: point.tcp_z }, data: point };
 
                 marker.addEventListener('pointerdown', (e) => {
                     e.stopPropagation();
                     markers.forEach(m => m.dom.style.backgroundColor = '#f44336');
                     marker.style.backgroundColor = '#00e676';
                     activeGraspData = point;
-                    textActiveGrasp.innerText = `선택됨: Rank ${point.rank || index + 1}`;
+                    // 🌟 수정포인트: UI 텍스트 업데이트
+                    textActiveGrasp.innerText = `선택됨: TCP (${point.tcp_x.toFixed(2)}, ${point.tcp_y.toFixed(2)}, ${point.tcp_z.toFixed(2)})`;
                 });
 
                 markersContainer.appendChild(marker);
@@ -353,35 +354,33 @@ const main = async () => {
                 polygonPoints = [];
                 completedPolygons = []; // 파란색 면 날림
                 isPolygonClosed = false;
-                scene.forceRender = true; 
+                scene.forceRender = true;
             });
 
             // 🌟 5-2. 전송 버튼 (데이터만 빼고, 파란색 면만 삭제, 초록색 점은 유지!)
             btnSendBoxes.addEventListener("pointerdown", (e) => {
                 e.stopPropagation();
                 if (moveItBoxes.length === 0) return alert("⚠️ 지정된 선택 영역이 없습니다.");
-                
                 alert(`[MoveIt 충돌 객체 등록]\n총 ${moveItBoxes.length}개 영역 전송 완료!\n\n` + JSON.stringify(moveItBoxes, null, 2));
-                
                 // --- 핵심 패치 ---
                 moveItBoxes = []; // 전송했으니 박스 데이터는 초기화 (새로운 작업을 위해)
                 polygonPoints = [];
                 completedPolygons = []; // 파란색 다각형 껍데기들 초기화!
                 isPolygonClosed = false;
                 // 💡 selectedPointIndices.clear(); <-- 이 줄을 지웠습니다! 초록색 점은 영구 유지됨!
-                
-                scene.forceRender = true; 
+                scene.forceRender = true;
                 console.log("🧹 전송 완료: 파란색 다각형은 지워졌으나, 초록색 포인트는 작업 내역으로 유지됩니다.");
             });
 
             btnSendGrasp.addEventListener("pointerdown", (e) => {
                 e.stopPropagation();
                 if (!activeGraspData) return alert("⚠️ 빨간색 파지점을 선택해주세요.");
+                // 🌟 수정포인트: 제공된 새로운 데이터 키(approach_dx 등)를 사용하여 JSON 구성
                 alert(`[MoveIt 파지 자세 전송]\n\n` + JSON.stringify({
                     id: "target_grasp_pose",
-                    position: [activeGraspData.position.x, activeGraspData.position.y, activeGraspData.position.z],
-                    approach_vector: [activeGraspData.approach_vector.nx, activeGraspData.approach_vector.ny, activeGraspData.approach_vector.nz],
-                    rank: activeGraspData.rank
+                    position: [activeGraspData.tcp_x, activeGraspData.tcp_y, activeGraspData.tcp_z],
+                    approach_vector: [activeGraspData.approach_dx, activeGraspData.approach_dy, activeGraspData.approach_dz],
+                    width: activeGraspData.width
                 }, null, 2));
             });
 
@@ -406,7 +405,7 @@ const main = async () => {
                 if (polygonPoints.length >= 3) {
                     const dx = e.offsetX - polygonPoints[0].x;
                     const dy = e.offsetY - polygonPoints[0].y;
-                    if (dx * dx + dy * dy < 144) { 
+                    if (dx * dx + dy * dy < 144) {
                         isPolygonClosed = true;
                         currentMousePos = null;
                         scene.forceRender = true;
@@ -415,7 +414,7 @@ const main = async () => {
                 }
 
                 polygonPoints.push({ x: e.offsetX, y: e.offsetY });
-                scene.forceRender = true; 
+                scene.forceRender = true;
             });
 
             polyCanvas.addEventListener("pointermove", (e) => {
@@ -423,7 +422,7 @@ const main = async () => {
                 e.stopPropagation();
                 if (!isPolygonClosed) {
                     currentMousePos = { x: e.offsetX, y: e.offsetY };
-                    scene.forceRender = true; 
+                    scene.forceRender = true;
                 }
             });
 
@@ -455,7 +454,7 @@ const main = async () => {
                         let mvp = new Float32Array(16);
                         for (let i = 0; i < 4; i++) {
                             for (let j = 0; j < 4; j++) {
-                                mvp[i * 4 + j] = 
+                                mvp[i * 4 + j] =
                                     viewProj[0 * 4 + j] * splatTransform[i * 4 + 0] +
                                     viewProj[1 * 4 + j] * splatTransform[i * 4 + 1] +
                                     viewProj[2 * 4 + j] * splatTransform[i * 4 + 2] +
@@ -484,7 +483,7 @@ const main = async () => {
                             let screenX = ((clipX / clipW) * 0.5 + 0.5) * width;
                             let screenY = ((-clipY / clipW) * 0.5 + 0.5) * height;
 
-                            if (screenX < polyMinX || screenX > polyMaxX || screenY < polyMinY || screenY > polyMaxY) continue; 
+                            if (screenX < polyMinX || screenX > polyMaxX || screenY < polyMinY || screenY > polyMaxY) continue;
 
                             let isInside = false;
                             for (let pi = 0, pj = polygonPoints.length - 1; pi < polygonPoints.length; pj = pi++) {
@@ -516,13 +515,13 @@ const main = async () => {
                                 id: "obstacle_poly_" + Date.now().toString().slice(-4),
                                 point_count: count,
                                 size: [
-                                    Number((Math.max(maxX - minX, PADDING)).toFixed(4)), 
-                                    Number((Math.max(maxY - minY, PADDING)).toFixed(4)), 
+                                    Number((Math.max(maxX - minX, PADDING)).toFixed(4)),
+                                    Number((Math.max(maxY - minY, PADDING)).toFixed(4)),
                                     Number((Math.max(maxZ - minZ, PADDING)).toFixed(4))
                                 ],
                                 position: [
-                                    Number(((maxX + minX) / 2).toFixed(4)), 
-                                    Number(((maxY + minY) / 2).toFixed(4)), 
+                                    Number(((maxX + minX) / 2).toFixed(4)),
+                                    Number(((maxY + minY) / 2).toFixed(4)),
                                     Number(((maxZ + minZ) / 2).toFixed(4))
                                 ]
                             });
@@ -533,7 +532,6 @@ const main = async () => {
                         }
                     }
                 }
-                
                 polygonPoints = [];
                 currentMousePos = null;
                 isPolygonClosed = false;
@@ -573,7 +571,6 @@ const main = async () => {
                         for (let i = 1; i < polygonPoints.length; i++) {
                             polyCtx.lineTo(polygonPoints[i].x, polygonPoints[i].y);
                         }
-                        
                         if (isPolygonClosed) {
                             polyCtx.closePath();
                             polyCtx.fillStyle = 'rgba(0, 150, 255, 0.4)';
@@ -646,7 +643,7 @@ const main = async () => {
                         let mvp = new Float32Array(16);
                         for (let i = 0; i < 4; i++) {
                             for (let j = 0; j < 4; j++) {
-                                mvp[i * 4 + j] = 
+                                mvp[i * 4 + j] =
                                     viewProj[0 * 4 + j] * splatTransform[i * 4 + 0] +
                                     viewProj[1 * 4 + j] * splatTransform[i * 4 + 1] +
                                     viewProj[2 * 4 + j] * splatTransform[i * 4 + 2] +
@@ -671,23 +668,23 @@ const main = async () => {
                 }
             });
 
-            // 🌟 9. PLY 강제 다운로드
-            try {
-                const plyFetchUrl = new URL(`/point_cloud.ply?t=${Date.now()}`, document.baseURI).toString();
-                const plyRes = await fetch(plyFetchUrl, { cache: 'no-store' }); 
-                const plyBlob = await plyRes.blob();
-                const plyFile = new File([plyBlob], 'point_cloud.ply', { type: 'application/octet-stream' });
-                events.invoke('import', [{ filename: 'point_cloud.ply', contents: plyFile }]);
-            } catch (err) {
-                console.error("PLY 강제 로드 실패:", err);
+                // 🌟 9. PLY 강제 다운로드
+                try {
+                    const plyFetchUrl = new URL(`/point_cloud.ply?t=${Date.now()}`, document.baseURI).toString();
+                    const plyRes = await fetch(plyFetchUrl, { cache: 'no-store' });
+                    const plyBlob = await plyRes.blob();
+                    const plyFile = new File([plyBlob], 'point_cloud.ply', { type: 'application/octet-stream' });
+                    events.invoke('import', [{ filename: 'point_cloud.ply', contents: plyFile }]);
+                } catch (err) {
+                    console.error("PLY 강제 로드 실패:", err);
+                }
+
+            } catch (error) {
+                console.warn("로직 실행 실패:", error);
             }
+        }, 1500);
+        // =========================================================
 
-        } catch (error) {
-            console.warn("로직 실행 실패:", error);
-        }
-    }, 1500); 
-    // =========================================================
+    };
 
-};
-
-export { main };
+    export { main };
