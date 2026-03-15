@@ -200,11 +200,49 @@ const main = async () => {
     }
 
     // =========================================================
-    // 🚀 [커스텀 로직] 전송 후 파란색 다각형만 지우고 초록색 점은 유지!
+    // 🚀 [커스텀 로직] 데이터베이스 연동, 다각형 선택, 그리고 STT (음성 인식)
     // =========================================================
     setTimeout(async () => {
         try {
-            console.log("🛠️ 초고속 클릭 다각형 영역 선택 UI 세팅 시작...");
+            console.log("🛠️ 커스텀 UI 및 STT 세팅 시작...");
+
+            const baseCamera = scene.camera.camera;
+            const pcCamera = (baseCamera as any).camera || baseCamera;
+            if (pcCamera) {
+                pcCamera.nearClip = 0.001; // 물체 바로 앞까지 다가가도 렌더링되도록 최소 거리 축소
+                console.log("📸 카메라 근거리 클리핑(NearClip) 설정 완료!");
+            }
+
+            // --- 0. WebSocket 설정 (STT 데이터 전송용) ---
+            const wsUrl = 'ws://localhost:8080/ws/robot';
+            let socket: WebSocket | null = null;
+            
+            const connectWebSocket = () => {
+                try {
+                    socket = new WebSocket(wsUrl);
+                    socket.onopen = () => {
+                        console.log('✅ STT WebSocket 연결 성공');
+                        const wsStatus = document.getElementById('text-ws-status');
+                        if (wsStatus) {
+                            wsStatus.innerText = "🟢 WS 연결됨";
+                            wsStatus.style.color = "#00e676";
+                        }
+                    };
+                    socket.onclose = () => {
+                        console.log('❌ STT WebSocket 연결 종료. 3초 후 재연결 시도...');
+                        const wsStatus = document.getElementById('text-ws-status');
+                        if (wsStatus) {
+                            wsStatus.innerText = "🔴 WS 끊김";
+                            wsStatus.style.color = "#ff5252";
+                        }
+                        setTimeout(connectWebSocket, 3000);
+                    };
+                    socket.onerror = (err) => console.error('⚠️ STT WebSocket 에러:', err);
+                } catch (e) {
+                    console.error('WebSocket 초기화 실패:', e);
+                }
+            };
+            connectWebSocket();
 
             // --- 1. 다각형 그리기 캔버스 ---
             const polyCanvas = document.createElement('canvas');
@@ -243,12 +281,17 @@ const main = async () => {
             panel.style.zIndex = '2000';
             panel.style.pointerEvents = 'auto';
             panel.innerHTML = `
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 12px; font-weight: bold;">
+                    <span id="text-db-status" style="color: #4caf50;">📡 DB 자동 연동 대기중...</span>
+                    <span id="text-ws-status" style="color: #ff5252;">🔴 WS 끊김</span>
+                </div>
+                
                 <h3 style="margin: 0 0 15px 0; font-size: 16px; border-bottom: 1px solid #444; padding-bottom: 8px;">📦 MoveIt 다각형 영역 선택</h3>
                 <div style="margin-bottom: 15px;">
                     <button id="btn-poly-toggle" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #5e35b1; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📐 영역 찍기 모드: OFF</button>
                     <button id="btn-poly-complete" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">✅ 이 다각형으로 영역 추출</button>
                     <button id="btn-reset-boxes" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #546e7a; color: white; border: none; border-radius: 4px; cursor: pointer;">🔄 선택 영역 모두 초기화</button>
-                    <button id="btn-send-boxes" style="width: 100%; padding: 10px; background: #e65100; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">전체 선택영역 MoveIt 보내기</button>
+                    <button id="btn-send-boxes" style="width: 100%; padding: 10px; background: #e65100; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">PLY 추출 & 백엔드 저장</button>
                 </div>
 
                 <h3 style="margin: 20px 0 15px 0; font-size: 16px; border-bottom: 1px solid #444; padding-bottom: 8px;">🎯 파지점 (Grasp) 매니저</h3>
@@ -257,6 +300,12 @@ const main = async () => {
                 </div>
                 <div style="margin-bottom: 5px; font-size: 12px; color: #aaa;" id="text-active-grasp">선택된 파지점: 없음</div>
                 <button id="btn-send-grasp" style="width: 100%; padding: 10px; background: #00838f; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">선택한 파지점 자세 전송</button>
+
+                <h3 style="margin: 20px 0 15px 0; font-size: 16px; border-bottom: 1px solid #444; padding-bottom: 8px;">🎤 음성 명령 (STT)</h3>
+                <div style="margin-bottom: 15px;">
+                    <button id="btn-stt-toggle" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🎙️ 음성 인식 시작</button>
+                    <div style="margin-bottom: 5px; font-size: 12px; color: #aaa; min-height: 15px; word-break: break-all;" id="text-stt-result">인식된 텍스트가 여기에 표시됩니다.</div>
+                </div>
             `;
             editorUI.canvasContainer.dom.appendChild(panel);
 
@@ -267,6 +316,10 @@ const main = async () => {
             const btnToggleGrasp = document.getElementById('btn-toggle-grasp')!;
             const btnSendGrasp = document.getElementById('btn-send-grasp')!;
             const textActiveGrasp = document.getElementById('text-active-grasp')!;
+            const textDbStatus = document.getElementById('text-db-status')!;
+            
+            const btnSttToggle = document.getElementById('btn-stt-toggle') as HTMLButtonElement;
+            const textSttResult = document.getElementById('text-stt-result')!;
 
             // --- 3. 상태 변수들 ---
             let isPolyMode = false;
@@ -277,47 +330,240 @@ const main = async () => {
             let moveItBoxes: any[] = [];
             let selectedPointIndices = new Set<number>();
             let activeGraspData: any = null;
-            const markers: any[] = [];
+            let markers: any[] = [];
             let isGraspVisible = true;
+            let currentLoadedFileName = ""; // 현재 화면에 로드된 파일명 추적
+            let currentLoadedGraspFileName = "";
 
-            // --- 4. JSON 다운로드 (캐시 무효화 및 새로운 데이터 구조 매핑) ---
-            const jsonUrl1 = new URL(`/downsampled_points.json?t=${Date.now()}`, document.baseURI).toString();
-            const jsonUrl2 = new URL(`/grasp_points.json?t=${Date.now()}`, document.baseURI).toString();
-            const response = await fetch(jsonUrl1, { cache: 'no-store' }).catch(() => fetch(jsonUrl2, { cache: 'no-store' }));
-            let graspData: any = {};
-            if (response && response.ok) graspData = await response.json();
+            // ---------------------------------------------------------
+            // 🎙️ STT (음성 인식) 로직 구현
+            // ---------------------------------------------------------
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+            let recognition: any = null;
+            let isRecording = false;
 
-            // 🌟 수정포인트: valid_grasps 배열로 데이터 접근
-            const graspsList = graspData.valid_grasps || graspData.grasp_points || [];
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.continuous = false; // 한 번 말하고 끝나면 자동 종료
+                recognition.interimResults = false; // 중간 결과 생략 (최종 결과만)
+                recognition.lang = 'ko-KR'; // 한국어 설정 (원하면 'en-US' 등으로 변경)
 
-            graspsList.forEach((point: any, index: number) => {
-                const marker = document.createElement('div');
-                marker.style.position = 'absolute';
-                marker.style.width = '4px';
-                marker.style.height = '4px';
-                marker.style.marginLeft = '-6px';
-                marker.style.marginTop = '-6px';
-                marker.style.borderRadius = '50%';
-                marker.style.backgroundColor = '#f44336';
-                //marker.style.border = '2px solid white';
-                marker.style.cursor = 'pointer';
-                marker.style.pointerEvents = 'auto';
+                recognition.onresult = (event: any) => {
+                    const transcript = event.results[0][0].transcript;
+                    textSttResult.innerText = `💬 "${transcript}"`;
+                    textSttResult.style.color = "#00e676";
+                    console.log("🎤 음성 인식 결과:", transcript);
 
-                // 🌟 수정포인트: point.tcp_x, tcp_y, tcp_z를 3D 공간 투영용으로 매핑
-                const mObj = { dom: marker, pos: { x: point.tcp_x, y: point.tcp_y, z: point.tcp_z }, data: point };
+                    // 백엔드로 WebSocket 전송
+                    if (socket && socket.readyState === WebSocket.OPEN) {
+                        const payload = JSON.stringify({ type: 'stt_command', text: transcript });
+                        socket.send(payload);
+                        console.log("📤 WebSocket 전송 완료:", payload);
+                    } else {
+                        console.warn("⚠️ WebSocket이 연결되어 있지 않아 서버로 전송하지 못했습니다.");
+                        textSttResult.innerText += " (서버 전송 실패)";
+                        textSttResult.style.color = "#ffb300";
+                    }
+                };
 
-                marker.addEventListener('pointerdown', (e) => {
-                    e.stopPropagation();
-                    markers.forEach(m => m.dom.style.backgroundColor = '#f44336');
-                    marker.style.backgroundColor = '#00e676';
-                    activeGraspData = point;
-                    // 🌟 수정포인트: UI 텍스트 업데이트
-                    textActiveGrasp.innerText = `선택됨: TCP (${point.tcp_x.toFixed(2)}, ${point.tcp_y.toFixed(2)}, ${point.tcp_z.toFixed(2)})`;
-                });
+                recognition.onerror = (event: any) => {
+                    console.error("STT 에러 발생:", event.error);
+                    textSttResult.innerText = `⚠️ 에러: ${event.error}`;
+                    textSttResult.style.color = "#ff5252";
+                    stopStt();
+                };
 
-                markersContainer.appendChild(marker);
-                markers.push(mObj);
+                recognition.onend = () => {
+                    stopStt();
+                };
+            } else {
+                btnSttToggle.innerText = "❌ 브라우저 미지원";
+                btnSttToggle.style.background = "#424242";
+                btnSttToggle.disabled = true;
+                textSttResult.innerText = "Chrome 브라우저를 사용해주세요.";
+            }
+
+            const startStt = () => {
+                if (!recognition) return;
+                try {
+                    recognition.start();
+                    isRecording = true;
+                    btnSttToggle.innerText = "🛑 듣는 중... (클릭 시 중지)";
+                    btnSttToggle.style.background = "#d32f2f"; // 빨간색
+                    textSttResult.innerText = "말씀해 주세요...";
+                    textSttResult.style.color = "#aaa";
+                } catch(e) {
+                    console.error("STT 시작 오류:", e);
+                }
+            };
+
+            const stopStt = () => {
+                if (!recognition) return;
+                try {
+                    recognition.stop();
+                } catch(e) {}
+                isRecording = false;
+                btnSttToggle.innerText = "🎙️ 음성 인식 시작";
+                btnSttToggle.style.background = "#1976d2"; // 파란색
+            };
+
+            btnSttToggle.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+                if (isRecording) {
+                    stopStt();
+                } else {
+                    startStt();
+                }
             });
+
+            // ---------------------------------------------------------
+            // 🌟 4. 데이터 로드 및 갱신 함수 (API 연동)
+            // ---------------------------------------------------------
+            const backendBaseUrl = 'http://localhost:8080'; // 공통 URL
+
+            const loadLatestData = async () => {
+                try {
+                    const response = await fetch(`${backendBaseUrl}/api/ply/latest`);
+                    
+                    if (response.status === 204) return; // 데이터 없음
+                    
+                    const dbData = await response.json();
+                    
+                    // ==========================================
+                    // 1. PLY 파일 변경 감지 및 로드 (독립 실행)
+                    // ==========================================
+                    if (dbData && dbData.fileName && dbData.fileName !== currentLoadedFileName) {
+                        console.log(`🔄 새로운 스캔 데이터 감지됨: ${dbData.fileName}`);
+                        textDbStatus.innerText = `📡 최신 로드됨: ${dbData.fileName}`;
+                        textDbStatus.style.color = "#00e676";
+                        currentLoadedFileName = dbData.fileName;
+
+                        try {
+                            // 🚀 새 파일을 불러오기 전에 화면의 기존 모델(Splat) 및 선택 데이터 모두 지우기
+                            const existingElements = (scene as any).elements;
+                            if (existingElements && existingElements.length > 0) {
+                                
+                                // 1. 커스텀 다각형 변수들 비우기
+                                selectedPointIndices.clear();
+                                moveItBoxes = [];
+                                polygonPoints = [];
+                                completedPolygons = [];
+                                isPolygonClosed = false;
+                                
+                                // 2. 모델 선택 해제 (기즈모 충돌 방지)
+                                try { events.invoke('selection', null); } catch (e) {}
+
+                                // 3. ✨ [핵심] 씬의 "모든 것"을 지우지 않고, "3D 스플랫(PLY)" 데이터만 콕 집어서 골라내기!
+                                const splatElements = [...existingElements].filter((el: any) => el.splatData);
+
+                                splatElements.forEach((el: any) => {
+                                    try {
+                                        if (typeof (scene as any).remove === 'function') {
+                                            (scene as any).remove(el); // 오직 PLY 모델만 안전하게 제거
+                                        }
+                                    } catch (e) {
+                                        console.warn("⚠️ 이전 모델 삭제 중 경고:", e);
+                                    }
+                                });
+                                
+                                console.log("🧹 이전 스캔 데이터 안전하게 제거 완료");
+
+                                // 4. ✨ [핵심] 렌더링 충돌(RenderPass error)을 막기 위해 0.1초(100ms) 대기하며 프레임 넘겨주기
+                                await new Promise(resolve => setTimeout(resolve, 100));
+                            }
+
+
+                            // --- 여기서부터는 기존 코드와 동일합니다 ---
+                            const plyFetchUrl = `${backendBaseUrl}/files/${dbData.fileName}?t=${Date.now()}`;
+                            const plyRes = await fetch(plyFetchUrl, { cache: 'no-store' });
+                            
+                            if (!plyRes.ok) throw new Error(`HTTP error! status: ${plyRes.status}`);
+                            
+                            const plyBlob = await plyRes.blob();
+                            const plyFile = new File([plyBlob], dbData.fileName, { type: 'application/octet-stream' });
+                            
+                            await events.invoke('import', [{ filename: dbData.fileName, contents: plyFile }]);
+                            console.log(`✅ ${dbData.fileName} 공유 폴더에서 로드 완료!`);
+
+                            // x축 90도 회전 적용 (방어적 코드)
+                            const elements = (scene as any).elements;
+                            if (elements && elements.length > 0) {
+                                const lastElement = elements.filter((el: any) => el.splatData).pop();
+                                if (lastElement) {
+                                    const targetEntity = lastElement.setLocalEulerAngles ? lastElement : lastElement.entity;
+                                    if (targetEntity && typeof targetEntity.setLocalEulerAngles === 'function') {
+                                        targetEntity.setLocalEulerAngles(90, 0, -180); 
+                                        console.log(`✅ ${dbData.fileName} x축 90도 회전 적용 완료!`);
+                                        scene.forceRender = true;
+                                    }
+                                }
+                            }
+                        } catch (err) {
+                            console.error("새로운 PLY 로드 실패:", err);
+                        }
+                    }
+                    // ==========================================
+                    // 2. 파지점(JSON) 파일 변경 감지 및 로드 (독립 실행)
+                    // ==========================================
+                    if (dbData && dbData.graspDataFileName && dbData.graspDataFileName !== currentLoadedGraspFileName) {
+                        console.log(`🎯 새로운 파지점 데이터 감지됨: ${dbData.graspDataFileName}`);
+                        currentLoadedGraspFileName = dbData.graspDataFileName; // 최신 파일명으로 업데이트
+            
+                        // 기존 파지점 마커 지우기
+                        markersContainer.innerHTML = '';
+                        markers = [];
+                        activeGraspData = null;
+                        textActiveGrasp.innerText = "선택된 파지점: 없음";
+            
+                        // 새로운 파지점 마커 그리기
+                        try {
+                            const graspUrl = `${backendBaseUrl}/files/${dbData.graspDataFileName}?t=${Date.now()}`;
+                            const graspRes = await fetch(graspUrl, { cache: 'no-store' });
+                            if (graspRes.ok) {
+                                const graspData = await graspRes.json();
+                                const graspsList = graspData.valid_grasps || graspData.grasp_points || [];
+            
+                                graspsList.forEach((point: any) => {
+                                    const marker = document.createElement('div');
+                                    marker.style.position = 'absolute';
+                                    marker.style.width = '4px';
+                                    marker.style.height = '4px';
+                                    marker.style.marginLeft = '-6px';
+                                    marker.style.marginTop = '-6px';
+                                    marker.style.borderRadius = '50%';
+                                    marker.style.backgroundColor = '#f44336';
+                                    marker.style.cursor = 'pointer';
+                                    marker.style.pointerEvents = 'auto';
+            
+                                    const mObj = { dom: marker, pos: { x: point.tcp_x, y: point.tcp_y, z: point.tcp_z }, data: point };
+            
+                                    marker.addEventListener('pointerdown', (e) => {
+                                        e.stopPropagation();
+                                        markers.forEach(m => m.dom.style.backgroundColor = '#f44336');
+                                        marker.style.backgroundColor = '#00e676';
+                                        activeGraspData = point;
+                                        textActiveGrasp.innerText = `선택됨: TCP (${point.tcp_x.toFixed(2)}, ${point.tcp_y.toFixed(2)}, ${point.tcp_z.toFixed(2)})`;
+                                    });
+            
+                                    markersContainer.appendChild(marker);
+                                    markers.push(mObj);
+                                });
+                                console.log(`✅ ${dbData.graspDataFileName} 파지점 마커 업데이트 완료!`);
+                            }
+                        } catch (err) {
+                            console.error("새로운 파지점 데이터 로드 실패:", err);
+                        }
+                    }
+                    
+                } catch (error) {
+                    textDbStatus.innerText = "📡 백엔드 연결 실패";
+                    textDbStatus.style.color = "#ff5252";
+                }
+            };
+
+            await loadLatestData();
+            setInterval(loadLatestData, 3000);
+            // ---------------------------------------------------------
 
             // --- 5. 버튼 이벤트 ---
             btnToggleGrasp.addEventListener("pointerdown", (e) => {
@@ -346,45 +592,143 @@ const main = async () => {
                 scene.forceRender = true;
             });
 
-            // 🌟 5-1. 완전 초기화 (초록색 점, 파란색 면 모두 삭제)
             btnResetBoxes.addEventListener("pointerdown", (e) => {
                 e.stopPropagation();
                 moveItBoxes = [];
-                selectedPointIndices.clear(); // 초록색 점 날림
+                selectedPointIndices.clear();
                 polygonPoints = [];
-                completedPolygons = []; // 파란색 면 날림
+                completedPolygons = [];
                 isPolygonClosed = false;
                 scene.forceRender = true;
             });
 
-            // 🌟 5-2. 전송 버튼 (데이터만 빼고, 파란색 면만 삭제, 초록색 점은 유지!)
-            btnSendBoxes.addEventListener("pointerdown", (e) => {
+            // ---------------------------------------------------------
+            // 🌟 6. [핵심 변경사항] PLY 추출 후 공유 폴더 저장을 위한 백엔드 전송
+            // ---------------------------------------------------------
+            btnSendBoxes.addEventListener("pointerdown", async (e) => {
                 e.stopPropagation();
-                if (moveItBoxes.length === 0) return alert("⚠️ 지정된 선택 영역이 없습니다.");
-                alert(`[MoveIt 충돌 객체 등록]\n총 ${moveItBoxes.length}개 영역 전송 완료!\n\n` + JSON.stringify(moveItBoxes, null, 2));
-                // --- 핵심 패치 ---
-                moveItBoxes = []; // 전송했으니 박스 데이터는 초기화 (새로운 작업을 위해)
-                polygonPoints = [];
-                completedPolygons = []; // 파란색 다각형 껍데기들 초기화!
-                isPolygonClosed = false;
-                // 💡 selectedPointIndices.clear(); <-- 이 줄을 지웠습니다! 초록색 점은 영구 유지됨!
-                scene.forceRender = true;
-                console.log("🧹 전송 완료: 파란색 다각형은 지워졌으나, 초록색 포인트는 작업 내역으로 유지됩니다.");
+                
+                if (selectedPointIndices.size === 0) {
+                    return alert("⚠️ 추출할 영역을 먼저 다각형으로 선택해 주세요!");
+                }
+
+                btnSendBoxes.innerText = "⏳ 처리 중...";
+                btnSendBoxes.style.background = "#880e4f";
+
+                try {
+                    // 1. 현재 선택된 스플랫 모델 및 변환 매트릭스 가져오기
+                    let splatTransform = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
+                    const elements = (scene as any).elements;
+                    let activeSplat = elements && elements.length > 0 ? elements.find((el: any) => el.splatData) : null;
+                    
+                    if (activeSplat && activeSplat.worldTransform) {
+                        splatTransform = activeSplat.worldTransform.data;
+                    }
+
+                    if (!activeSplat || !activeSplat.splatData) {
+                        throw new Error("3D 모델 데이터를 찾을 수 없습니다.");
+                    }
+
+                    let xData = activeSplat.splatData.getProp('x');
+                    let yData = activeSplat.splatData.getProp('y');
+                    let zData = activeSplat.splatData.getProp('z');
+
+                    // 2. PLY 데이터 형식에 맞게 문자열 생성
+                    let plyContent = [];
+                    plyContent.push("ply");
+                    plyContent.push("format ascii 1.0");
+                    plyContent.push(`element vertex ${selectedPointIndices.size}`);
+                    plyContent.push("property float x");
+                    plyContent.push("property float y");
+                    plyContent.push("property float z");
+                    plyContent.push("end_header");
+
+                    selectedPointIndices.forEach(idx => {
+                        let x = xData[idx]; 
+                        let y = yData[idx]; 
+                        let z = zData[idx];
+
+                        // Local 좌표를 World 좌표로 변환
+                        let worldX = x * splatTransform[0] + y * splatTransform[4] + z * splatTransform[8] + splatTransform[12];
+                        let worldY = x * splatTransform[1] + y * splatTransform[5] + z * splatTransform[9] + splatTransform[13];
+                        let worldZ = x * splatTransform[2] + y * splatTransform[6] + z * splatTransform[10] + splatTransform[14];
+
+                        plyContent.push(`${worldX.toFixed(6)} ${worldY.toFixed(6)} ${worldZ.toFixed(6)}`);
+                    });
+
+                    // 3. 텍스트를 Blob으로 변환하여 파일 껍데기(FormData) 생성
+                    const blob = new Blob([plyContent.join('\n')], { type: 'text/plain' });
+                    const fileName = `extracted_mesh_${Date.now()}.ply`;
+                    
+                    const formData = new FormData();
+                    formData.append('file', blob, fileName);
+
+                    // 4. 백엔드 API로 파일 전송 (Spring Boot에서 해당 파일을 받아 저장해야 함)
+                    // 주의: Spring Boot 컨트롤러에 /api/ply/upload 엔드포인트가 구현되어 있어야 합니다!
+                    const uploadUrl = `${backendBaseUrl}/api/ply/upload`; 
+                    console.log(`🌐 백엔드로 PLY 파일 전송 시작: ${uploadUrl}`);
+                    
+                    const response = await fetch(uploadUrl, {
+                        method: 'POST',
+                        body: formData // 파일 데이터 전송
+                    });
+
+                    if (response.ok) {
+                        alert(`🎉 PLY 생성 및 전송 완료!\n파일명: ${fileName}\n\n서버의 공유 폴더에 저장되었습니다.`);
+                    } else {
+                        alert(`⚠️ 백엔드 전송 실패 (상태 코드: ${response.status})`);
+                    }
+
+                } catch (error) {
+                    console.error("PLY 생성 및 전송 실패:", error);
+                    alert("⚠️ 데이터를 처리하거나 서버에 전송하는 중 오류가 발생했습니다.");
+                } finally {
+                    // 버튼 초기화 및 화면 정리
+                    btnSendBoxes.innerText = "PLY 추출 & 백엔드 저장";
+                    btnSendBoxes.style.background = "#e65100";
+                    
+                    moveItBoxes = []; 
+                    polygonPoints = [];
+                    completedPolygons = []; 
+                    isPolygonClosed = false;
+                    scene.forceRender = true;
+                }
             });
 
             btnSendGrasp.addEventListener("pointerdown", (e) => {
                 e.stopPropagation();
-                if (!activeGraspData) return alert("⚠️ 빨간색 파지점을 선택해주세요.");
-                // 🌟 수정포인트: 제공된 새로운 데이터 키(approach_dx 등)를 사용하여 JSON 구성
-                alert(`[MoveIt 파지 자세 전송]\n\n` + JSON.stringify({
-                    id: "target_grasp_pose",
+                
+                if (!activeGraspData) {
+                    return alert("⚠️ 빨간색 파지점을 먼저 선택해주세요.");
+                }
+            
+                // 1. 파이썬이 알아들을 수 있게 '이름표(type)'를 붙여서 데이터 포장
+                const graspCommand = {
+                    type: "execute_grasp", // 파이썬에서 if (msg_type == "execute_grasp") 로 받으면 됩니다.
                     position: [activeGraspData.tcp_x, activeGraspData.tcp_y, activeGraspData.tcp_z],
                     approach_vector: [activeGraspData.approach_dx, activeGraspData.approach_dy, activeGraspData.approach_dz],
                     width: activeGraspData.width
-                }, null, 2));
+                };
+            
+                // 2. 웹소켓을 통해 백엔드로 전송 (백엔드가 파이썬으로 브로드캐스트)
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify(graspCommand));
+                    
+                    // 버튼 UI 피드백
+                    btnSendGrasp.innerText = "🚀 파지 명령 전송 완료!";
+                    btnSendGrasp.style.background = "#2e7d32"; // 초록색으로 변경
+                    setTimeout(() => {
+                        btnSendGrasp.innerText = "선택한 파지점 자세 전송";
+                        btnSendGrasp.style.background = "#00838f"; // 원래 색으로 복구
+                    }, 2000);
+                    
+                    console.log("📤 파지 명령 웹소켓 전송:", graspCommand);
+                } else {
+                    alert("⚠️ 서버와 웹소켓이 연결되어 있지 않아 전송할 수 없습니다.");
+                }
             });
 
-            // --- 6. 완벽한 화면 잠금 및 다각형 닫기 로직 ---
+            // --- 7. 완벽한 화면 잠금 및 다각형 닫기 로직 ---
             const blockEvent = (e: Event) => {
                 if(isPolyMode) { e.stopPropagation(); e.preventDefault(); }
             };
@@ -426,7 +770,7 @@ const main = async () => {
                 }
             });
 
-            // --- 7. 초고도 최적화 3D 점 추출 ---
+            // --- 8. 초고도 최적화 3D 점 추출 ---
             btnPolyComplete.addEventListener("pointerdown", (e) => {
                 e.stopPropagation();
                 if (polygonPoints.length < 3) return alert("⚠️ 최소 3개의 점을 찍어주세요!");
@@ -498,7 +842,7 @@ const main = async () => {
                                 let worldY = x * splatTransform[1] + y * splatTransform[5] + z * splatTransform[9] + splatTransform[13];
                                 let worldZ = x * splatTransform[2] + y * splatTransform[6] + z * splatTransform[10] + splatTransform[14];
 
-                                selectedPointIndices.add(i); // 🌟 초록 점 데이터 영구 추가
+                                selectedPointIndices.add(i); 
                                 minX = Math.min(minX, worldX);
                                 minY = Math.min(minY, worldY);
                                 minZ = Math.min(minZ, worldZ);
@@ -526,9 +870,6 @@ const main = async () => {
                                 ]
                             });
                             completedPolygons.push([...polygonPoints]);
-                            console.log(`✅ 고속 추출 완료: ${count}개 포인트 포함`);
-                        } else {
-                            alert("⚠️ 다각형 영역 내부에 포인트가 없습니다.");
                         }
                     }
                 }
@@ -538,7 +879,7 @@ const main = async () => {
                 scene.forceRender = true;
             });
 
-            // --- 8. 렌더링 루프 ---
+            // --- 9. 렌더링 루프 ---
             events.on('prerender', () => {
                 const width = editorUI.canvasContainer.dom.offsetWidth;
                 const height = editorUI.canvasContainer.dom.offsetHeight;
@@ -551,7 +892,6 @@ const main = async () => {
                 if (polyCtx) {
                     polyCtx.clearRect(0, 0, width, height);
 
-                    // 완료된 다각형 렌더링
                     completedPolygons.forEach(poly => {
                         polyCtx.beginPath();
                         polyCtx.moveTo(poly[0].x, poly[0].y);
@@ -564,7 +904,6 @@ const main = async () => {
                         polyCtx.stroke();
                     });
 
-                    // 현재 그리고 있는 다각형 렌더링
                     if (polygonPoints.length > 0 && isPolyMode) {
                         polyCtx.beginPath();
                         polyCtx.moveTo(polygonPoints[0].x, polygonPoints[0].y);
@@ -609,7 +948,6 @@ const main = async () => {
                     if (!activeSplat) activeSplat = events.invoke('selection');
                     if (activeSplat && activeSplat.worldTransform) splatTransform = activeSplat.worldTransform.data;
 
-                    // 파지점 마커 위치
                     if (markersContainer.style.display !== 'none' && viewProj) {
                         markers.forEach(m => {
                             const localX = m.pos.x;
@@ -634,7 +972,6 @@ const main = async () => {
                         });
                     }
 
-                    // 선택된 3D 점 네온 그린 오버레이
                     if (selectedPointIndices.size > 0 && activeSplat && activeSplat.splatData && viewProj) {
                         let xData = activeSplat.splatData.getProp('x');
                         let yData = activeSplat.splatData.getProp('y');
@@ -668,23 +1005,12 @@ const main = async () => {
                 }
             });
 
-                // 🌟 9. PLY 강제 다운로드
-                try {
-                    const plyFetchUrl = new URL(`/point_cloud.ply?t=${Date.now()}`, document.baseURI).toString();
-                    const plyRes = await fetch(plyFetchUrl, { cache: 'no-store' });
-                    const plyBlob = await plyRes.blob();
-                    const plyFile = new File([plyBlob], 'point_cloud.ply', { type: 'application/octet-stream' });
-                    events.invoke('import', [{ filename: 'point_cloud.ply', contents: plyFile }]);
-                } catch (err) {
-                    console.error("PLY 강제 로드 실패:", err);
-                }
+        } catch (error) {
+            console.warn("로직 실행 실패:", error);
+        }
+    }, 1500);
+    // =========================================================
 
-            } catch (error) {
-                console.warn("로직 실행 실패:", error);
-            }
-        }, 1500);
-        // =========================================================
+};
 
-    };
-
-    export { main };
+export { main };
