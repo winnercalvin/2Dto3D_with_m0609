@@ -8,7 +8,7 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 def generate_launch_description():
     env_pytorch = SetEnvironmentVariable('PYTORCH_CUDA_ALLOC_CONF', 'expandable_segments:True')
-    env_openai = SetEnvironmentVariable('OPENAI_API_KEY', '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') # 🔥 API 키 확인!
+    env_openai = SetEnvironmentVariable('OPENAI_API_KEY', 'PUT_YOUR_OPENAI_API_KEY') 
 
     # 1. 로봇 & MoveIt 브링업
     moveit_config_dir = get_package_share_directory('m0609_with_rg2_moveit_config')
