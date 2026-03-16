@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "feature_splat"
+version = "0.1.0"
+description = "Custom Feature 3DGS Method for Nerfstudio"
+requires-python = ">=3.8"
+dependencies = [
+    "nerfstudio",
+]
+
+[project.entry-points.'nerfstudio.method_configs']
+feature-splatfacto = "feature_splat.feature_splat_config:feature_splat_method"
+
+[tool.setuptools]
+packages = ["feature_splat"]
