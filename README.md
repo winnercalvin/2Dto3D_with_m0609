@@ -47,11 +47,3 @@ graph TD
     %% 기본 스타일링
     style Start fill:#f9f,stroke:#333,stroke-width:2px
     style End fill:#f9f,stroke:#333,stroke-width:2px
-
-
-    장비명 (Model),수량,비고
-    m0609,1,두산 협동 로봇 팔
-    RG2,1,OnRobot 그리퍼
-    RealSense Camera,1,2D 이미지 데이터 수집용 뎁스 카메라
-    PC,1,Ubuntu 환경 (ROS 2 및 딥러닝 구동)
-    마이크,1,Whisper STT 음성 명령 입력용
