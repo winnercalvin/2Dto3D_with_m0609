@@ -5,8 +5,8 @@
 ## 🎥 1. 프로젝트 시연 영상 (Demo Video)
 
 <p align="center">
-  <a href="[https://www.youtube.com/watch?v=0dqowlO3JVI](https://www.youtube.com/watch?v=0dqowlO3JVI)">
-    <img src="[https://img.youtube.com/vi/0dqowlO3JVI/0.jpg](https://img.youtube.com/vi/0dqowlO3JVI/0.jpg)" width="700" alt="프로젝트 시연 영상">
+  <a href="https://www.youtube.com/watch?v=0dqowlO3JVI">
+    <img src="https://img.youtube.com/vi/0dqowlO3JVI/0.jpg" width="700" alt="프로젝트 시연 영상">
   </a>
 </p>
 
@@ -88,43 +88,47 @@ graph TD
 ## 4. 📦 의존성 및 기술 스택 (Dependencies)
 
 <p align="center">
-  <img src="used_tools.png" width="700" alt="used_tools_and_stacks">
+  <img src="./images/used_tools.png" width="700" alt="used_tools_and_stacks">
 </p>
 
-프로젝트의 각 계층별로 사용된 프레임워크와 라이브러리 목록입니다.
+프로젝트의 각 계층별로 사용된 프레임워크와 핵심 라이브러리 목록입니다.
 
 ### 🖥️ OS 및 Core 환경
 | Category | Technology / Language | Version |
 | :--- | :--- | :--- |
 | **OS** | Ubuntu LTS (Jammy Jellyfish) | 22.04 |
-| **Language** | Python / C++ | 3.10.x / 17 |
+| **Language** | Python / C++ | 3.10.12 / 17 |
+| **Math & Matrix** | NumPy | 1.26.x |
 
 ### 🤖 Robot Control (ROS 2 & MoveIt)
 | Package / Library | Description | Version |
 | :--- | :--- | :--- |
 | **ROS 2** | 로봇 시스템 코어 및 노드 통신 (rclpy, rclcpp) | Humble |
-| **MoveIt 2** | 로봇 팔 경로 계획 (Motion Planning) 및 충돌 회피 | Humble |
-| **DSR_ROBOT2** | Doosan 로봇 공식 제어 API 및 하드웨어 인터페이스 | - |
-| **realsense2_camera**| Intel Realsense 카메라 ROS 2 드라이버 | - |
+| **MoveIt 2** | 로봇 팔 경로 계획 (Motion Planning) 및 충돌 회피 | 2.6.x (Humble) |
+| **DSR_ROBOT2** | Doosan 로봇 공식 제어 API 및 하드웨어 인터페이스 | Humble Branch |
+| **realsense2_camera**| Intel Realsense RGB-D 카메라 ROS 2 드라이버 | 4.54.x |
+| **cv_bridge** | ROS Image 메시지와 OpenCV 간의 데이터 변환 | Humble |
 
 ### 🧠 AI & Vision (2D/VLM Pipeline)
 | Framework / Tool | Description | Version |
 | :--- | :--- | :--- |
-| **PyTorch** | 딥러닝 코어 엔진 (torch, torchvision) | 2.x |
-| **Ultralytics** | YOLOv11 (위험물 실시간 Object Detection) | 최신 |
-| **Transformers** | Florence-2 (이미지 캡셔닝/BBox 추출), CLIP (Feature 추출) | 최신 |
-| **BiRefNet** | 고정밀 전경/배경 분리 (Background Removal) | - |
-| **Segment Anything** | SAM (정밀 Segmentation Mask 생성) | - |
-| **OpenAI API** | GPT-4o 등 VLM을 활용한 지휘관 AI (위험도 판별) | - |
-| **Whisper** | (STT) 음성 인식 명령 처리를 위한 모델 | - |
+| **PyTorch** | 딥러닝 코어 엔진 (`torch`, `torchvision`) | 2.2.x+cu118 |
+| **Ultralytics** | YOLOv11 (위험물 실시간 Object Detection) | 8.3.x |
+| **Transformers** | Florence-2 (이미지 캡셔닝/BBox), CLIP (Feature 추출) | 4.40.x |
+| **OpenCV** | `cv2` 기반 실시간 이미지 프로세싱 및 BBox 시각화 | 4.5.4 |
+| **BiRefNet** | 고정밀 전경/배경 분리 (Background Removal) | Latest |
+| **Segment Anything** | SAM (정밀 Segmentation Mask 생성) | 1.0 |
+| **OpenAI API** | GPT-4o(지휘관 AI 판별) 및 Whisper(음성 인식) API | 1.14.x |
+| **SpeechRecognition**| 마이크 음성 데이터(`PyAudio`) 캡처 및 STT 전처리 | 3.10.x |
 
 ### 🧊 3D Reconstruction & Spatial Intelligence
 | Framework / Tool | Description | Version |
 | :--- | :--- | :--- |
-| **3DGS** | 3D Gaussian Splatting (3D 씬 재구성) | - |
-| **Feature Splatting**| 3D 공간 상의 Feature 매칭 및 좌표 추출 | - |
-| **Open3D** | 포인트 클라우드 및 3D 데이터 처리 | 최신 |
-
+| **Nerfstudio** | `ns-train splatfacto` 기반 3DGS 렌더링 코어 엔진 | 1.1.x |
+| **3DGS** | 3D Gaussian Splatting 알고리즘 (배경 제거 씬 재구성) | - |
+| **Feature Splatting**| 3D 공간 상의 Feature 매칭 및 3D 좌표 타겟팅 | - |
+| **Open3D** | `.ply` 변환, 필터링 등 Python 3D 데이터 처리 | 0.18.x |
+| **PCL** | C++ 기반 Point Cloud Data 프로세싱 (`mesh_manager_node`) | 1.12.x |
 <br/>
 
 ## 5. ▶️ 실행 순서 (Usage Guide)
