@@ -5,12 +5,14 @@
 ## 🎥 1. 프로젝트 시연 영상 (Demo Video)
 
 <p align="center">
-  <a href="유튜브_링크_입력">
-    <img src="https://img.youtube.com/vi/유튜브_영상_ID/0.jpg" width="700" alt="프로젝트 시연 영상">
+  <a href="[https://www.youtube.com/watch?v=0dqowlO3JVI](https://www.youtube.com/watch?v=0dqowlO3JVI)">
+    <img src="[https://img.youtube.com/vi/0dqowlO3JVI/0.jpg](https://img.youtube.com/vi/0dqowlO3JVI/0.jpg)" width="700" alt="프로젝트 시연 영상">
   </a>
 </p>
 
-*(※ 위 `<a href="...">` 및 `<img>` 태그 안의 `유튜브_링크_입력`과 `유튜브_영상_ID` 부분을 실제 주소로 변경해 주세요.)*
+<p align="center">
+  <img src="./images/3d_gif.gif" width="700" alt="3D 렌더링 데모">
+</p>
 
 <br/>
 
@@ -18,9 +20,10 @@
 프로젝트의 전체적인 구조와 소프트웨어 흐름도입니다.
 
 ### 2-1. 시스템 설계도 (System Architecture)
-
+![시스템 설계도](./images/system_architecture.png)
 
 ### 2-2. 플로우 차트 (Flow Chart)
+```mermaid
 graph TD
     %% 노드 스타일 정의
     classDef vision fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
@@ -65,7 +68,10 @@ graph TD
     MoveIt --> Action1["Gripper Close<br/>전선 파지"]:::robot
     Action1 --> Action2["Pull & Release<br/>절단 후 놓기"]:::robot
     Action2 --> Home["로봇 Home 복귀"]:::robot
-    
+```
+
+<br/>
+
 ## 3. 🛠️ 사용 장비 목록 (Hardware List)
 본 프로젝트에 활용된 주요 하드웨어 장비입니다.
 
@@ -80,6 +86,11 @@ graph TD
 <br/>
 
 ## 4. 📦 의존성 및 기술 스택 (Dependencies)
+
+<p align="center">
+  <img src="used_tools.png" width="700" alt="used_tools_and_stacks">
+</p>
+
 프로젝트의 각 계층별로 사용된 프레임워크와 라이브러리 목록입니다.
 
 ### 🖥️ OS 및 Core 환경
@@ -99,7 +110,7 @@ graph TD
 ### 🧠 AI & Vision (2D/VLM Pipeline)
 | Framework / Tool | Description | Version |
 | :--- | :--- | :--- |
-| **PyTorch** | 딥러닝 코어 엔진 (`torch`, `torchvision`) | 2.x |
+| **PyTorch** | 딥러닝 코어 엔진 (torch, torchvision) | 2.x |
 | **Ultralytics** | YOLOv11 (위험물 실시간 Object Detection) | 최신 |
 | **Transformers** | Florence-2 (이미지 캡셔닝/BBox 추출), CLIP (Feature 추출) | 최신 |
 | **BiRefNet** | 고정밀 전경/배경 분리 (Background Removal) | - |
@@ -123,15 +134,16 @@ graph TD
 카메라를 켜고 RGB 이미지와 Depth 정보를 일치시키는 노드를 실행합니다.
 ```bash
 ros2 launch realsense2_camera rs_align_depth_launch.py depth_module.depth_profile:=848x480x30 rgb_camera.color_profile:=640x480x30 initial_reset:=true align_depth.enable:=true enable_rgbd:=true pointcloud.enable:=true
+```
 
-###Step 2. EOD 마스터 노드 실행 (로봇 제어 및 비전 파이프라인)
-새 터미널을 열고, 로봇 제어(MoveIt)와 AI 비전 파이프라인(YOLO, Florence-2, SAM 등)이 포함된 메인 런치를 실행합니다
+### Step 2. EOD 마스터 노드 실행 (로봇 제어 및 비전 파이프라인)
+새 터미널을 열고, 로봇 제어(MoveIt)와 AI 비전 파이프라인(YOLO, Florence-2, SAM 등)이 포함된 메인 런치를 실행합니다.
 ```bash
 ros2 launch eod_detection eod_master.launch.py
+```
 
-###Step 3. 3DGS 및 로봇 통합 모듈 실행
+### Step 3. 3DGS 및 로봇 통합 모듈 실행
 마지막으로 새 터미널을 열고, 3D Gaussian Splatting, Feature 매칭, 좌표 변환 및 STT 음성 인식을 수행하는 통합 노드를 실행합니다.
 ```bash
 ros2 launch 3dgs_pkg robot_integration.launch.py
-
-    
+```
